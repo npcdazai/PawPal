@@ -1,828 +1,677 @@
-import React, { useState } from 'react';
-import {
-  Animated,
-  Image,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import React, { useCallback, useRef, useState, type ComponentRef } from 'react';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { colors, radii, shadows } from '../theme/colors';
-import { typography } from '../theme/typography';
+import { fonts, typography } from '../theme/typography';
 import { Icon } from '../components/Icon';
+import { Badge } from '../components/Badge';
 import { CircularProgress } from '../components/CircularProgress';
-import { Toast } from '../components/Toast';
-import { BottomNavigation, TabKey } from '../components/BottomNavigation';
+import { ProgressBar } from '../components/ProgressBar';
+import { Toast, useToast } from '../components/Toast';
+import { BOTTOM_NAV_HEIGHT } from '../components/BottomNavigation';
+import { DASHBOARD_SECTIONS, type DashboardSection } from '../navigation/navigation';
+import { useAppNavigation } from '../navigation/useAppNavigation';
+import { MascotAnchor, MascotScrollView } from '../mascot/MascotAnchor';
+import { useMascotActions } from '../mascot/MascotProvider';
+import { DOCK_SCALE, MASCOT_BASE_SIZE } from '../mascot/mascotModel';
 
-export const DashboardScreen: React.FC = () => {
-  const [currentTab, setCurrentTab] = useState<TabKey>('home');
-  const [treatsLeft, setTreatsLeft] = useState(3);
-  const [toastMessage, setToastMessage] = useState('');
-  const [toastVisible, setToastVisible] = useState(false);
-  const [soundIndex, setSoundIndex] = useState(0);
+const DOCK_SIZE = Math.round(MASCOT_BASE_SIZE * DOCK_SCALE);
+const DOCK_BADGE = DOCK_SIZE + 12;
+const WALK_GOAL_KM = 4;
+const KCAL_PER_KM = 65.6;
+const DAILY_MEALS = 2;
 
-  // Corgi mascot wiggle animation
-  const [mascotBounce] = useState(() => new Animated.Value(0));
-  const [mascotRotate] = useState(() => new Animated.Value(0));
+type QuickAction = 'walk' | 'feed' | 'meds' | 'bowl';
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setToastVisible(true);
-    setTimeout(() => setToastVisible(false), 2200);
+interface Moment {
+  id: string;
+  title: string;
+  detail: string;
+  time: string;
+  icon: string;
+  tint: string;
+  ink: string;
+}
+
+const QUICK_ACTIONS: { key: QuickAction; label: string; icon: string; tint: string; ink: string }[] = [
+  { key: 'walk', label: 'Log Walk', icon: 'directions-walk', tint: colors.primaryTint, ink: colors.primary },
+  { key: 'feed', label: 'Feed Now', icon: 'restaurant', tint: colors.stage, ink: colors.coral },
+  { key: 'meds', label: 'Log Meds', icon: 'medication', tint: colors.primaryTint, ink: colors.primary },
+  { key: 'bowl', label: 'Refill Bowl', icon: 'water-drop', tint: colors.stage, ink: colors.coral },
+];
+
+const INITIAL_MOMENTS: Moment[] = [
+  {
+    id: 'riverside',
+    title: 'Sunny Riverside Walk',
+    detail: '32 min · Made a beagle friend!',
+    time: '08:15 AM',
+    icon: 'park',
+    tint: colors.primaryTint,
+    ink: colors.primary,
+  },
+  {
+    id: 'breakfast',
+    title: 'Breakfast Kibble + Bone Broth',
+    detail: '1.5 cups · Slow feeder cleared',
+    time: '07:40 AM',
+    icon: 'restaurant',
+    tint: colors.stage,
+    ink: colors.coral,
+  },
+  {
+    id: 'glucosamine',
+    title: 'Daily Glucosamine Chew',
+    detail: 'Joint support · Accepted happily',
+    time: '07:30 AM',
+    icon: 'medication',
+    tint: colors.amberTint,
+    ink: colors.amberInk,
+  },
+];
+
+const formatClock = (date: Date) =>
+  date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+/** Dashboard sections reachable from the common tab bar (see NAVIGATION.tabBar). */
+const toSection = (value: string | undefined): DashboardSection =>
+  DASHBOARD_SECTIONS.find((section) => section === value) ?? DASHBOARD_SECTIONS[0];
+
+export function DashboardScreen() {
+  const { goToTab } = useAppNavigation();
+  const { bark } = useMascotActions();
+  const { message, show } = useToast();
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+  const sectionY = useRef<Partial<Record<DashboardSection, number>>>({});
+
+  // The `section` param (set by the common tab bar) picks where to scroll.
+  const params = useLocalSearchParams<{ section?: string }>();
+  const section = toSection(params.section);
+  const [treats, setTreats] = useState(3);
+  const [walkKm, setWalkKm] = useState(3.2);
+  const [mealsServed, setMealsServed] = useState(2);
+  const [bonusSnacks, setBonusSnacks] = useState(0);
+  const [moments, setMoments] = useState<Moment[]>(INITIAL_MOMENTS);
+  const momentSeq = useRef(0);
+
+  const walkPercent = Math.min(100, Math.round((walkKm / WALK_GOAL_KM) * 100));
+  const kcal = Math.round(walkKm * KCAL_PER_KM);
+
+  const logMoment = (moment: Omit<Moment, 'id' | 'time'>) => {
+    momentSeq.current += 1;
+    const entry = { ...moment, id: `log-${momentSeq.current}`, time: formatClock(new Date()) };
+    setMoments((current) => [entry, ...current]);
   };
 
-  const handlePetMascot = () => {
-    const sounds = [
-      'Woof! Barnaby did a happy spin! 🐾',
-      '*Tail wags furiously at supersonic speed* 🐶',
-      "Barnaby brought his leash to your feet! Let's go!",
-      'Arf! Ready for squirrel patrol!',
-    ];
-    const phrase = sounds[soundIndex % sounds.length];
-    setSoundIndex((prev) => prev + 1);
-    showToast(phrase);
-
-    Animated.sequence([
-      Animated.parallel([
-        Animated.timing(mascotBounce, {
-          toValue: -12,
-          duration: 120,
-          useNativeDriver: true,
-        }),
-        Animated.timing(mascotRotate, {
-          toValue: 1,
-          duration: 120,
-          useNativeDriver: true,
-        }),
-      ]),
-      Animated.parallel([
-        Animated.timing(mascotRotate, {
-          toValue: -1,
-          duration: 120,
-          useNativeDriver: true,
-        }),
-      ]),
-      Animated.parallel([
-        Animated.timing(mascotBounce, {
-          toValue: 0,
-          duration: 140,
-          useNativeDriver: true,
-        }),
-        Animated.timing(mascotRotate, {
-          toValue: 0,
-          duration: 140,
-          useNativeDriver: true,
-        }),
-      ]),
-    ]).start();
-  };
-
-  const handleDispenseTreat = () => {
-    if (treatsLeft > 0) {
-      const next = treatsLeft - 1;
-      setTreatsLeft(next);
-      showToast('🦴 *Crunch crunch!* Barnaby caught the biscuit!');
+  const runQuickAction = (action: QuickAction) => {
+    bark();
+    switch (action) {
+      case 'walk': {
+        setWalkKm((km) => Math.round((km + 0.4) * 10) / 10);
+        logMoment({
+          title: 'Quick Walk Logged',
+          detail: '+0.4 km around the block',
+          icon: 'directions-walk',
+          tint: colors.primaryTint,
+          ink: colors.primary,
+        });
+        show('Walk logged · +0.4 km 🦮');
+        break;
+      }
+      case 'feed': {
+        if (mealsServed < DAILY_MEALS) setMealsServed((served) => served + 1);
+        else setBonusSnacks((snacks) => snacks + 1);
+        logMoment({
+          title: mealsServed < DAILY_MEALS ? 'Meal Served' : 'Bonus Snack',
+          detail: mealsServed < DAILY_MEALS ? 'Kibble bowl cleared' : 'Crunchy carrot treat',
+          icon: 'restaurant',
+          tint: colors.stage,
+          ink: colors.coral,
+        });
+        show(mealsServed < DAILY_MEALS ? 'Meal served 🍲' : 'Bonus snack logged 🥕');
+        break;
+      }
+      case 'meds': {
+        logMoment({
+          title: 'Meds Logged',
+          detail: 'Glucosamine dose recorded',
+          icon: 'medication',
+          tint: colors.amberTint,
+          ink: colors.amberInk,
+        });
+        show('Meds logged 💊');
+        break;
+      }
+      case 'bowl': {
+        logMoment({
+          title: 'Water Bowl Refilled',
+          detail: 'Fresh 750 ml, nice and cool',
+          icon: 'water-drop',
+          tint: colors.primaryTint,
+          ink: colors.primary,
+        });
+        show('Fresh water poured 💧');
+        break;
+      }
     }
   };
 
-  const corgiRotateInterpolation = mascotRotate.interpolate({
-    inputRange: [-1, 0, 1],
-    outputRange: ['-6deg', '0deg', '6deg'],
-  });
+  const dispenseTreat = () => {
+    if (treats === 0) return;
+    setTreats((count) => count - 1);
+    bark();
+    logMoment({
+      title: 'Treat Dispensed',
+      detail: 'Crunch crunch — caught mid-air!',
+      icon: 'cookie',
+      tint: colors.coralTint,
+      ink: colors.coral,
+    });
+  };
+
+  // Runs on focus too, so returning from Profile lands on the chosen section once visible.
+  useFocusEffect(
+    useCallback(() => {
+      const timer = setTimeout(() => {
+        scrollRef.current?.scrollTo({ y: sectionY.current[section] ?? 0, animated: true });
+      }, 60);
+      return () => clearTimeout(timer);
+    }, [section])
+  );
+
+  const openProfile = () => goToTab('profile');
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <Toast visible={toastVisible} message={toastMessage} />
-
-      {/* Top App Header */}
-      <View style={styles.topHeader}>
-        <View style={styles.headerLeft}>
-          <View style={styles.logoBadge}>
-            <Icon name="pets" size={20} color={colors.onPrimaryFixed} />
-          </View>
-          <View>
-            <Text style={styles.brandTitle}>PAWPULSE</Text>
-            <Text style={styles.headerTitle}>Dashboard</Text>
-          </View>
-        </View>
-
-        <View style={styles.headerRight}>
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => showToast('All pet alerts up to date 🔔')}
-            style={styles.iconButton}
-          >
-            <Icon name="notifications" size={22} color={colors.onSurfaceVariant} />
-            <View style={styles.notificationDot} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => showToast('Viewing Sarah & Barnaby profile 🐾')}
-          >
-            <Image
-              source={require('../../assets/profile_avatar.png')}
-              style={styles.avatarImage}
-            />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Main Content Area */}
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <MascotScrollView
+        scrollRef={scrollRef}
+        contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* Top Hero Greeting Card with Mascot */}
-        <View style={styles.heroCard}>
-          {/* Ambient Warm Blur accents */}
-          <View style={styles.blurTopLeft} />
-          <View style={styles.blurBottomRight} />
-
-          {/* Left Column Content */}
-          <View style={styles.heroLeftCol}>
-            <View style={styles.feelingPill}>
-              <Text style={{ fontSize: 11 }}>🐾</Text>
-              <Text style={styles.feelingText}>Barnaby is feeling playful!</Text>
+        {/* Top navigation */}
+        <View style={styles.topBar}>
+          <View style={styles.brand}>
+            <View style={styles.logo}>
+              <Text style={styles.logoGlyph}>🐾</Text>
             </View>
-
-            <Text style={styles.welcomeTitle}>
-              Welcome back,{'\n'}
-              <Text style={{ color: colors.primary }}>Sarah & Barnaby!</Text>
-            </Text>
-
-            <Text style={styles.welcomeSubtitle} numberOfLines={2}>
-              Ready for the afternoon walk & agility park run?
-            </Text>
-
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={handleDispenseTreat}
-              disabled={treatsLeft === 0}
-              style={[
-                styles.treatButton,
-                treatsLeft === 0 && styles.treatButtonDisabled,
-              ]}
-            >
-              <Icon name="redeem" size={18} color={colors.onSecondaryContainer} />
-              <Text style={styles.treatButtonText}>
-                {treatsLeft > 0 ? `Dispense Treat (${treatsLeft})` : 'No treats left'}
-              </Text>
-            </TouchableOpacity>
+            <View>
+              <Text style={styles.brandName}>Pawsome</Text>
+              <Text style={styles.brandSection}>Home</Text>
+            </View>
           </View>
-
-          {/* Right Column Mascot */}
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={handlePetMascot}
-            style={styles.heroRightCol}
+          <Pressable
+            onPress={openProfile}
+            accessibilityRole="button"
+            accessibilityLabel="Sarah's profile"
+            style={styles.avatar}
           >
-            <Animated.View
-              style={[
-                styles.mascotContainer,
-                {
-                  transform: [
-                    { translateY: mascotBounce },
-                    { rotate: corgiRotateInterpolation },
-                  ],
-                },
+            <Text style={styles.avatarText}>S</Text>
+          </Pressable>
+        </View>
+
+        {/* Greeting & mascot banner */}
+        <View style={styles.banner}>
+          <View style={styles.bannerRow}>
+            <View style={styles.bannerCopy}>
+              <Badge label="Barnaby is feeling playful" tone="white" dot />
+              <Text style={styles.bannerTitle}>Welcome back, Sarah & Barnaby! 🐾</Text>
+              <Text style={styles.bannerSubtitle}>
+                {"Ready for today's joyful tail-wags and outdoor adventures."}
+              </Text>
+            </View>
+            <View style={styles.dock}>
+              <View style={styles.dockCircle}>
+                <MascotAnchor id="dashboard" size={DOCK_SIZE} />
+              </View>
+              <Pressable onPress={bark} accessibilityRole="button" hitSlop={6}>
+                <Text style={styles.dockLabel}>TAP TO PET</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={styles.treatBar}>
+            <Text style={styles.treatText}>
+              🦴 Daily Treat Jar{' '}
+              <Text style={styles.treatCount}>
+                ({treats === 0 ? 'empty' : `${treats} left`})
+              </Text>
+            </Text>
+            <Pressable
+              onPress={dispenseTreat}
+              disabled={treats === 0}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: treats === 0 }}
+              style={({ pressed }) => [
+                styles.dispense,
+                pressed && styles.pressed,
+                treats === 0 && styles.dispenseEmpty,
               ]}
             >
-              <Image
-                source={require('../../assets/corgi_dashboard.png')}
-                style={styles.dashboardCorgiImg}
-                resizeMode="contain"
-              />
-              <View style={styles.sparkleIcon}>
-                <Icon name="auto-awesome" size={18} color={colors.tertiaryFixedDim} />
-              </View>
-            </Animated.View>
-            <View style={styles.tapPill}>
-              <Text style={styles.tapPillText}>TAP TO PET</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-
-        {/* Quick Care Actions */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Quick Care Actions</Text>
-            <TouchableOpacity onPress={() => showToast('Customizing quick action tiles')}>
-              <Text style={styles.sectionLink}>Customize</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.actionsGrid}>
-            {/* Walk */}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => showToast('Walk logged! Timer started 🦮')}
-              style={styles.actionCard}
-            >
-              <View style={[styles.actionIconCircle, { backgroundColor: colors.primaryFixed }]}>
-                <Icon name="directions-walk" size={24} color={colors.primary} />
-              </View>
-              <Text style={styles.actionLabel}>Log Walk</Text>
-            </TouchableOpacity>
-
-            {/* Feed */}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => showToast('Dinner bowl recorded! 🍲')}
-              style={styles.actionCard}
-            >
-              <View style={[styles.actionIconCircle, { backgroundColor: colors.secondaryFixed }]}>
-                <Icon name="restaurant" size={24} color={colors.secondary} />
-              </View>
-              <Text style={styles.actionLabel}>Feed Now</Text>
-            </TouchableOpacity>
-
-            {/* Meds */}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => showToast('Supplements marked complete! 💊')}
-              style={styles.actionCard}
-            >
-              <View style={[styles.actionIconCircle, { backgroundColor: colors.primaryFixed }]}>
-                <Icon name="medication" size={24} color={colors.primary} />
-              </View>
-              <Text style={styles.actionLabel}>Log Meds</Text>
-            </TouchableOpacity>
-
-            {/* Water Bowl */}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => showToast('Fresh water bowl recorded! 💧')}
-              style={styles.actionCard}
-            >
-              <View style={[styles.actionIconCircle, { backgroundColor: colors.primaryFixed }]}>
-                <Icon name="water-drop" size={24} color={colors.primary} />
-              </View>
-              <Text style={styles.actionLabel}>Refill Bowl</Text>
-            </TouchableOpacity>
+              <Text style={styles.dispenseText}>{treats === 0 ? 'Refills 6 PM' : 'Dispense'}</Text>
+            </Pressable>
           </View>
         </View>
 
-        {/* Today's Health & Activity (Bento Section) */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{"Today's Health & Activity"}</Text>
-            <Text style={styles.sectionMeta}>Goal: 4.0 km</Text>
+        {/* Quick care */}
+        <View style={styles.section}>
+          <SectionHeader title="Quick Care" meta="Tap to log instantly" />
+          <View style={styles.quickGrid}>
+            {QUICK_ACTIONS.map((action) => (
+              <Pressable
+                key={action.key}
+                onPress={() => runQuickAction(action.key)}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.quickItem, pressed && styles.pressed]}
+              >
+                <View style={[styles.quickCircle, { backgroundColor: action.tint }]}>
+                  <Icon name={action.icon} size={26} color={action.ink} />
+                </View>
+                <Text style={styles.quickLabel}>{action.label}</Text>
+              </Pressable>
+            ))}
           </View>
+        </View>
 
-          {/* Daily Active Walking Card */}
-          <View style={styles.walkCard}>
-            <View style={styles.walkLeft}>
-              <View style={styles.walkTitleRow}>
+        {/* Today's rhythm */}
+        <View
+          style={styles.section}
+          onLayout={(event) => {
+            sectionY.current.health = event.nativeEvent.layout.y;
+          }}
+        >
+          <SectionHeader title="Today's Rhythm" meta={`Goal: ${WALK_GOAL_KM.toFixed(1)} km`} />
+
+          <View style={[styles.card, styles.walkCard]}>
+            <View style={styles.walkCopy}>
+              <View style={styles.cardTitleRow}>
                 <Icon name="directions-run" size={18} color={colors.primary} />
-                <Text style={styles.walkTitle}>Daily Active Walking</Text>
+                <Text style={styles.cardTitle}>Daily Walk</Text>
               </View>
-              <View style={styles.walkMetricRow}>
-                <Text style={styles.walkMetricMain}>3.2</Text>
-                <Text style={styles.walkMetricSub}>/ 4.0 km</Text>
-              </View>
-              <View style={styles.walkStatusRow}>
-                <View style={styles.activePulseDot} />
-                <Text style={styles.walkStatusText}>80% completed • 42 mins active</Text>
-              </View>
+              <Text style={styles.walkMetric}>
+                {walkKm.toFixed(1)}
+                <Text style={styles.walkGoal}> / {WALK_GOAL_KM.toFixed(1)} km</Text>
+              </Text>
+              <Text style={styles.cardMeta}>{kcal} kcal burned today</Text>
             </View>
-
-            <CircularProgress percentage={80} size={64} strokeWidth={6} />
+            <CircularProgress percentage={walkPercent} size={76} strokeWidth={8} />
           </View>
 
-          {/* Two-Column Bento Tiles */}
           <View style={styles.bentoRow}>
-            {/* Nutrition Card */}
-            <View style={styles.bentoCard}>
-              <View style={styles.bentoTopRow}>
-                <View style={[styles.bentoIcon, { backgroundColor: colors.secondaryFixed }]}>
-                  <Icon name="set-meal" size={20} color={colors.secondary} />
+            <View style={[styles.card, styles.bento]}>
+              <View style={styles.bentoTop}>
+                <View style={[styles.bentoIcon, { backgroundColor: colors.stage }]}>
+                  <Icon name="restaurant" size={18} color={colors.coral} />
                 </View>
-                <View style={styles.bentoBadgeNeutral}>
-                  <Text style={styles.bentoBadgeText}>On track</Text>
-                </View>
+                <Badge label="On track" tone="success" />
               </View>
-              <View style={styles.bentoContent}>
-                <Text style={styles.bentoValue}>2 of 2</Text>
-                <Text style={styles.bentoSub}>Meals Served</Text>
-                <View style={styles.bentoFootnote}>
-                  <Icon name="check-circle" size={13} color={colors.tertiary} />
-                  <Text style={styles.bentoFootnoteText}>Bone broth added</Text>
-                </View>
-              </View>
+              <Text style={styles.cardTitle}>Meals Served</Text>
+              <Text style={styles.bentoValue}>
+                {mealsServed} of {DAILY_MEALS}
+              </Text>
+              <ProgressBar progress={mealsServed / DAILY_MEALS} color={colors.success} height={6} />
+              {bonusSnacks > 0 ? (
+                <Text style={styles.cardMeta}>
+                  +{bonusSnacks} bonus {bonusSnacks === 1 ? 'snack' : 'snacks'}
+                </Text>
+              ) : null}
             </View>
 
-            {/* Vet Card */}
-            <View style={styles.bentoCard}>
-              <View style={styles.bentoTopRow}>
-                <View style={[styles.bentoIcon, { backgroundColor: colors.primaryFixed }]}>
-                  <Icon name="medical-services" size={20} color={colors.primary} />
+            <View style={[styles.card, styles.bento]}>
+              <View style={styles.bentoTop}>
+                <View style={[styles.bentoIcon, { backgroundColor: colors.primaryTint }]}>
+                  <Icon name="medical-services" size={18} color={colors.primary} />
                 </View>
-                <View style={styles.bentoBadgePrimary}>
-                  <Text style={[styles.bentoBadgeText, { color: colors.onPrimaryFixed }]}>
-                    Annual
-                  </Text>
-                </View>
+                <Badge label="Annual" tone="primary" />
               </View>
-              <View style={styles.bentoContent}>
-                <Text style={styles.bentoValue}>12 Days</Text>
-                <Text style={styles.bentoSub}>Vet Checkup</Text>
-                <View style={styles.bentoFootnote}>
-                  <Icon name="location-on" size={13} color={colors.onSurfaceVariant} />
-                  <Text style={styles.bentoFootnoteText} numberOfLines={1}>
-                    Dr. Aris Wells
-                  </Text>
-                </View>
-              </View>
+              <Text style={styles.cardTitle}>Next Vet Checkup</Text>
+              <Text style={styles.bentoValue}>12 days left</Text>
+              <Text style={styles.cardMeta}>Dr. Ava Wells</Text>
             </View>
           </View>
         </View>
 
-        {/* Barnaby's Day So Far Timeline */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{"Barnaby's Day So Far"}</Text>
-            <TouchableOpacity onPress={() => showToast('Full history log loaded')}>
-              <Text style={styles.sectionLink}>View History</Text>
-            </TouchableOpacity>
+        {/* Recent moments */}
+        <View
+          style={styles.section}
+          onLayout={(event) => {
+            sectionY.current.activities = event.nativeEvent.layout.y;
+          }}
+        >
+          <SectionHeader title="Recent Moments" meta="Today" />
+
+          <View style={styles.highlight}>
+            <Image
+              source={require('../../assets/corgi_dashboard.png')}
+              style={styles.highlightThumb}
+              resizeMode="cover"
+              accessibilityIgnoresInvertColors
+            />
+            <View style={styles.highlightCopy}>
+              <Badge label="Highlight" tone="coral" />
+              <Text style={styles.highlightTitle}>Morning sprint at Elm Creek</Text>
+              <Text style={styles.cardMeta}>2.1 km · Personal best pace!</Text>
+            </View>
+            <Icon name="chevron-right" size={22} color={colors.placeholder} />
           </View>
 
-          <View style={styles.timelineList}>
-            {/* Item 1: Riverside Walk */}
-            <View style={styles.timelineCard}>
-              <View style={styles.timelineLeft}>
-                <View style={[styles.timelineIconCircle, { backgroundColor: colors.primaryFixed }]}>
-                  <Icon name="park" size={22} color={colors.primary} />
+          <View style={styles.momentList}>
+            {moments.map((moment) => (
+              <View key={moment.id} style={styles.momentRow}>
+                <View style={[styles.momentIcon, { backgroundColor: moment.tint }]}>
+                  <Icon name={moment.icon} size={20} color={moment.ink} />
                 </View>
-                <View style={styles.timelineTextCol}>
-                  <Text style={styles.timelineHeadline}>Sunny Riverside Walk</Text>
-                  <Text style={styles.timelineSubtitle}>32 mins • Made a beagle friend!</Text>
+                <View style={styles.momentCopy}>
+                  <Text style={styles.momentTitle} numberOfLines={1}>
+                    {moment.title}
+                  </Text>
+                  <Text style={styles.cardMeta} numberOfLines={1}>
+                    {moment.detail}
+                  </Text>
                 </View>
+                <Text style={styles.momentTime}>{moment.time}</Text>
               </View>
-              <Text style={styles.timelineTime}>08:15 AM</Text>
-            </View>
-
-            {/* Item 2: Breakfast Kibble */}
-            <View style={styles.timelineCard}>
-              <View style={styles.timelineLeft}>
-                <View
-                  style={[styles.timelineIconCircle, { backgroundColor: colors.secondaryFixed }]}
-                >
-                  <Icon name="soup-kitchen" size={22} color={colors.secondary} />
-                </View>
-                <View style={styles.timelineTextCol}>
-                  <Text style={styles.timelineHeadline}>Breakfast Kibble + Broth</Text>
-                  <Text style={styles.timelineSubtitle}>1.5 cups slow-feeder cleared</Text>
-                </View>
-              </View>
-              <Text style={styles.timelineTime}>07:30 AM</Text>
-            </View>
-
-            {/* Item 3: Glucosamine Chew */}
-            <View style={styles.timelineCard}>
-              <View style={styles.timelineLeft}>
-                <View
-                  style={[
-                    styles.timelineIconCircle,
-                    { backgroundColor: colors.surfaceContainerHigh },
-                  ]}
-                >
-                  <Icon name="health-and-safety" size={22} color={colors.tertiary} />
-                </View>
-                <View style={styles.timelineTextCol}>
-                  <Text style={styles.timelineHeadline}>Daily Glucosamine Chew</Text>
-                  <Text style={styles.timelineSubtitle}>Joint support treat accepted</Text>
-                </View>
-              </View>
-              <Text style={styles.timelineTime}>07:35 AM</Text>
-            </View>
+            ))}
           </View>
         </View>
-      </ScrollView>
+      </MascotScrollView>
 
-      {/* Bottom Navigation */}
-      <BottomNavigation
-        currentTab={currentTab}
-        onTabChange={(tab) => {
-          setCurrentTab(tab);
-          if (tab !== 'home') {
-            showToast(`${tab.toUpperCase()} section loaded`);
-          }
-        }}
-      />
+      <Toast message={message} bottomOffset={BOTTOM_NAV_HEIGHT + 28} />
     </SafeAreaView>
   );
-};
+}
+
+function SectionHeader({ title, meta }: { title: string; meta: string }) {
+  return (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <Text style={styles.sectionMeta}>{meta}</Text>
+    </View>
+  );
+}
 
 const styles = StyleSheet.create({
-  safeArea: {
+  safe: {
     flex: 1,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.canvas,
   },
-  topHeader: {
-    height: 64,
+  content: {
     paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: BOTTOM_NAV_HEIGHT + 48,
+    gap: 22,
+  },
+  topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.surfaceContainer,
+    paddingVertical: 6,
   },
-  headerLeft: {
+  brand: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
-  logoBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.primaryFixed,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  brandTitle: {
-    ...typography.labelSm,
-    color: colors.onSurfaceVariant,
-    letterSpacing: 0.8,
-  },
-  headerTitle: {
-    ...typography.headlineSm,
-    fontSize: 16,
-    color: colors.onSurface,
-    lineHeight: 20,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  iconButton: {
+  logo: {
     width: 42,
     height: 42,
     borderRadius: 21,
+    backgroundColor: colors.primaryTint,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
   },
-  notificationDot: {
-    position: 'absolute',
-    top: 9,
-    right: 9,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.secondaryContainer,
+  logoGlyph: {
+    fontSize: 20,
   },
-  avatarImage: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+  brandName: {
+    ...typography.headline,
+    lineHeight: 22,
   },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 24,
-    gap: 20,
+  brandSection: {
+    ...typography.bodySm,
   },
-  heroCard: {
-    width: '100%',
-    backgroundColor: colors.onTertiaryContainer,
-    borderRadius: radii.lg,
+  avatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: colors.amber,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: colors.card,
+    ...shadows.soft,
+  },
+  avatarText: {
+    fontFamily: fonts.extrabold,
+    fontSize: 16,
+    color: colors.card,
+  },
+  banner: {
     padding: 16,
+    gap: 14,
+    borderRadius: radii.lg,
+    backgroundColor: colors.stage,
+  },
+  bannerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  bannerCopy: {
+    flex: 1,
+    gap: 8,
+  },
+  bannerTitle: {
+    ...typography.headline,
+    fontSize: 19,
+  },
+  bannerSubtitle: {
+    ...typography.bodySm,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  dock: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  dockCircle: {
+    width: DOCK_BADGE,
+    height: DOCK_BADGE,
+    borderRadius: DOCK_BADGE / 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.75)',
+    borderWidth: 2,
+    borderColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dockLabel: {
+    fontFamily: fonts.extrabold,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    color: colors.coralInk,
+  },
+  treatBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    position: 'relative',
-    overflow: 'hidden',
-    ...shadows.card,
-  },
-  blurTopLeft: {
-    position: 'absolute',
-    top: -20,
-    left: -20,
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: 'rgba(255, 221, 180, 0.4)',
-  },
-  blurBottomRight: {
-    position: 'absolute',
-    bottom: -20,
-    right: -20,
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: 'rgba(255, 218, 210, 0.5)',
-  },
-  heroLeftCol: {
-    flex: 1,
-    maxWidth: '58%',
-    alignItems: 'flex-start',
-    zIndex: 2,
-  },
-  feelingPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: radii.full,
-    backgroundColor: colors.secondaryFixed,
-  },
-  feelingText: {
-    ...typography.labelSm,
-    fontSize: 10,
-    color: colors.onSecondaryFixedVariant,
-  },
-  welcomeTitle: {
-    ...typography.headlineMd,
-    fontWeight: '800',
-    color: colors.onSurface,
-    marginTop: 6,
-    lineHeight: 24,
-  },
-  welcomeSubtitle: {
-    ...typography.bodySm,
-    fontSize: 12,
-    color: colors.onSurfaceVariant,
-    marginTop: 4,
-  },
-  treatButton: {
-    marginTop: 12,
-    height: 38,
-    paddingHorizontal: 14,
-    borderRadius: radii.full,
-    backgroundColor: colors.secondaryContainer,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    ...shadows.card,
-  },
-  treatButtonDisabled: {
-    opacity: 0.6,
-  },
-  treatButtonText: {
-    ...typography.labelMd,
-    color: colors.onSecondaryContainer,
-    fontWeight: '700',
-  },
-  heroRightCol: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 2,
-  },
-  mascotContainer: {
-    width: 105,
-    height: 105,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  dashboardCorgiImg: {
-    width: 100,
-    height: 100,
-  },
-  sparkleIcon: {
-    position: 'absolute',
-    top: 0,
-    right: 2,
-  },
-  tapPill: {
-    marginTop: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: radii.full,
-    backgroundColor: colors.surfaceContainerLowest,
-    ...shadows.card,
-  },
-  tapPillText: {
-    ...typography.labelSm,
-    fontSize: 9,
-    color: colors.secondary,
-    letterSpacing: 0.6,
-  },
-  sectionContainer: {
     gap: 10,
+    paddingLeft: 16,
+    paddingRight: 6,
+    paddingVertical: 6,
+    borderRadius: radii.full,
+    backgroundColor: colors.card,
+    ...shadows.soft,
+  },
+  treatText: {
+    ...typography.label,
+    flexShrink: 1,
+  },
+  treatCount: {
+    fontFamily: fonts.medium,
+    color: colors.slate,
+  },
+  dispense: {
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: radii.full,
+    backgroundColor: colors.coral,
+    ...shadows.coral,
+  },
+  dispenseEmpty: {
+    backgroundColor: colors.placeholder,
+    boxShadow: 'none',
+  },
+  dispenseText: {
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    color: colors.onPrimary,
+  },
+  section: {
+    gap: 12,
   },
   sectionHeader: {
     flexDirection: 'row',
+    alignItems: 'baseline',
     justifyContent: 'space-between',
-    alignItems: 'center',
   },
   sectionTitle: {
-    ...typography.headlineSm,
-    fontSize: 17,
-    color: colors.onSurface,
-  },
-  sectionLink: {
-    ...typography.labelSm,
-    color: colors.primary,
-    fontWeight: '600',
+    ...typography.headline,
   },
   sectionMeta: {
-    ...typography.labelSm,
-    color: colors.onSurfaceVariant,
+    ...typography.bodySm,
   },
-  actionsGrid: {
+  quickGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+  },
+  quickItem: {
+    width: '24%',
+    alignItems: 'center',
     gap: 8,
   },
-  actionCard: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: radii.md,
-    backgroundColor: colors.surfaceContainerLowest,
-    ...shadows.card,
-  },
-  actionIconCircle: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+  quickCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  actionLabel: {
-    ...typography.labelSm,
-    fontSize: 11,
-    color: colors.onSurface,
-    fontWeight: '600',
+  quickLabel: {
+    ...typography.label,
+    fontSize: 12,
+    textAlign: 'center',
   },
-  walkCard: {
-    width: '100%',
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: radii.lg,
+  card: {
     padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    borderRadius: radii.lg,
+    backgroundColor: colors.card,
     ...shadows.card,
   },
-  walkLeft: {
-    flex: 1,
-  },
-  walkTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  walkTitle: {
-    ...typography.labelMd,
-    color: colors.onSurface,
-    fontWeight: '600',
-  },
-  walkMetricRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 4,
-    marginTop: 4,
-  },
-  walkMetricMain: {
-    ...typography.headlineLg,
-    fontSize: 26,
-    color: colors.onSurface,
-    fontWeight: '800',
-  },
-  walkMetricSub: {
-    ...typography.bodySm,
-    color: colors.onSurfaceVariant,
-    fontWeight: '600',
-  },
-  walkStatusRow: {
+  cardTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 4,
   },
-  activePulseDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: colors.primary,
+  cardTitle: {
+    ...typography.label,
   },
-  walkStatusText: {
+  cardMeta: {
     ...typography.bodySm,
-    fontSize: 12,
-    color: colors.onSurfaceVariant,
+  },
+  walkCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  walkCopy: {
+    gap: 4,
+  },
+  walkMetric: {
+    ...typography.metric,
+  },
+  walkGoal: {
+    fontFamily: fonts.semibold,
+    fontSize: 15,
+    color: colors.slate,
   },
   bentoRow: {
     flexDirection: 'row',
     gap: 12,
   },
-  bentoCard: {
+  bento: {
     flex: 1,
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: radii.md,
-    padding: 14,
-    justifyContent: 'space-between',
-    minHeight: 125,
-    ...shadows.card,
+    gap: 6,
   },
-  bentoTopRow: {
+  bentoTop: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
   },
   bentoIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  bentoBadgeNeutral: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: radii.full,
-    backgroundColor: colors.surfaceContainer,
-  },
-  bentoBadgePrimary: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: radii.full,
-    backgroundColor: colors.primaryFixed,
-  },
-  bentoBadgeText: {
-    ...typography.labelSm,
-    fontSize: 10,
-    color: colors.onSurface,
-    fontWeight: '600',
-  },
-  bentoContent: {
-    marginTop: 8,
-  },
   bentoValue: {
-    ...typography.headlineSm,
-    fontSize: 17,
-    color: colors.onSurface,
-    fontWeight: '700',
+    ...typography.headline,
   },
-  bentoSub: {
-    ...typography.bodySm,
-    fontSize: 12,
-    color: colors.onSurfaceVariant,
-  },
-  bentoFootnote: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 6,
-  },
-  bentoFootnoteText: {
-    ...typography.labelSm,
-    fontSize: 10,
-    color: colors.tertiary,
-    fontWeight: '600',
-  },
-  timelineList: {
-    gap: 10,
-  },
-  timelineCard: {
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: radii.md,
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    ...shadows.card,
-  },
-  timelineLeft: {
+  highlight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    flex: 1,
+    padding: 10,
+    borderRadius: radii.lg,
+    backgroundColor: colors.stage,
   },
-  timelineIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  highlightThumb: {
+    width: 76,
+    height: 76,
+    borderRadius: radii.md,
+  },
+  highlightCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  highlightTitle: {
+    ...typography.subhead,
+  },
+  momentList: {
+    borderRadius: radii.lg,
+    backgroundColor: colors.card,
+    paddingVertical: 4,
+    ...shadows.card,
+  },
+  momentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  momentIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  timelineTextCol: {
+  momentCopy: {
     flex: 1,
+    gap: 2,
   },
-  timelineHeadline: {
-    ...typography.headlineSm,
-    fontSize: 15,
-    color: colors.onSurface,
-    fontWeight: '600',
+  momentTitle: {
+    ...typography.subhead,
+    fontSize: 14,
   },
-  timelineSubtitle: {
+  momentTime: {
     ...typography.bodySm,
-    fontSize: 12,
-    color: colors.onSurfaceVariant,
-    marginTop: 2,
+    color: colors.placeholder,
   },
-  timelineTime: {
-    ...typography.labelSm,
-    color: colors.outline,
-    fontWeight: '500',
+  pressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.97 }],
   },
 });

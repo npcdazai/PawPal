@@ -1,90 +1,101 @@
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { colors } from '../theme/colors';
-import { typography } from '../theme/typography';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { colors, radii, shadows } from '../theme/colors';
+import { fonts } from '../theme/typography';
 import { Icon } from './Icon';
 
-export type TabKey = 'home' | 'health' | 'routines' | 'profile';
+/** Height of the floating bar, for content padding underneath it. */
+export const BOTTOM_NAV_HEIGHT = 64;
 
-interface BottomNavigationProps {
-  currentTab: TabKey;
-  onTabChange: (tab: TabKey) => void;
+interface BottomNavigationTab<K extends string> {
+  key: K;
+  label: string;
+  icon: string;
 }
 
-export const BottomNavigation: React.FC<BottomNavigationProps> = ({
-  currentTab,
-  onTabChange,
-}) => {
-  const tabs = [
-    { key: 'home', label: 'Home', icon: 'home' },
-    { key: 'health', label: 'Health', icon: 'favorite' },
-    { key: 'routines', label: 'Routines', icon: 'event-available' },
-    { key: 'profile', label: 'Profile', icon: 'account-circle' },
-  ];
+interface BottomNavigationProps<K extends string> {
+  tabs: readonly BottomNavigationTab<K>[];
+  current: K;
+  onChange: (tab: K) => void;
+}
+
+/** Floating rounded tab bar; the active tab expands into a Primary Blue pill. */
+export function BottomNavigation<K extends string>({
+  tabs,
+  current,
+  onChange,
+}: BottomNavigationProps<K>) {
+  const insets = useSafeAreaInsets();
 
   return (
-    <View style={styles.container}>
+    <View
+      role="tablist"
+      style={[styles.bar, { bottom: Math.max(insets.bottom, 12) }]}
+    >
       {tabs.map((tab) => {
-        const isActive = currentTab === tab.key;
+        const active = tab.key === current;
         return (
-          <TouchableOpacity
+          <Pressable
             key={tab.key}
-            activeOpacity={0.7}
-            onPress={() => onTabChange(tab.key as TabKey)}
-            style={styles.tabButton}
+            onPress={() => onChange(tab.key)}
+            role="tab"
+            aria-selected={active}
+            aria-label={tab.label}
+            style={[styles.tab, active && styles.tabActive]}
           >
-            <Icon
-              name={tab.icon}
-              size={24}
-              color={isActive ? colors.primary : colors.onSurfaceVariant}
-            />
-            <Text
-              style={[
-                styles.tabLabel,
-                isActive ? styles.tabLabelActive : styles.tabLabelInactive,
-              ]}
-            >
-              {tab.label}
-            </Text>
-          </TouchableOpacity>
+            <Icon name={tab.icon} size={22} color={active ? colors.onPrimary : colors.slate} />
+            {active ? (
+              <Text style={styles.activeLabel}>{tab.label}</Text>
+            ) : (
+              <Text style={styles.label}>{tab.label}</Text>
+            )}
+          </Pressable>
         );
       })}
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  container: {
-    height: 70,
+  bar: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    height: BOTTOM_NAV_HEIGHT,
     flexDirection: 'row',
-    justifyContent: 'space-around',
     alignItems: 'center',
-    backgroundColor: colors.surfaceBright,
-    borderTopWidth: 1,
-    borderTopColor: colors.surfaceContainer,
-    paddingBottom: 8,
-    shadowColor: '#181a20',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 16,
-    elevation: 8,
+    gap: 4,
+    paddingHorizontal: 8,
+    borderRadius: radii.xl,
+    backgroundColor: colors.card,
+    ...shadows.float,
   },
-  tabButton: {
+  tab: {
+    flex: 1,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 56,
-    height: 48,
-    gap: 4,
+    gap: 2,
+    borderRadius: radii.full,
   },
-  tabLabel: {
-    ...typography.labelMd,
+  tabActive: {
+    flex: 1.5,
+    flexDirection: 'row',
+    gap: 6,
+    backgroundColor: colors.primary,
+    ...shadows.primary,
   },
-  tabLabelActive: {
-    color: colors.primary,
-    fontWeight: '700',
+  label: {
+    fontFamily: fonts.semibold,
+    fontSize: 10,
+    lineHeight: 12,
+    color: colors.slate,
   },
-  tabLabelInactive: {
-    color: colors.onSurfaceVariant,
-    fontWeight: '500',
+  activeLabel: {
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    lineHeight: 16,
+    color: colors.onPrimary,
   },
 });

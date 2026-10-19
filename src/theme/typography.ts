@@ -1,71 +1,82 @@
-import { TextStyle } from 'react-native';
+import type { TextStyle } from 'react-native';
+import { colors } from './colors';
 
-export const typography: Record<string, TextStyle> = {
-  displayLg: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 40,
-    lineHeight: 48,
-    letterSpacing: -0.8,
-  },
-  headlineXl: {
-    fontFamily: 'PlusJakartaSans_700Bold',
-    fontSize: 32,
-    lineHeight: 40,
-    letterSpacing: -0.48,
-  },
-  headlineXlMobile: {
-    fontFamily: 'PlusJakartaSans_700Bold',
-    fontSize: 26,
+// Weights are expressed through the loaded font family (not fontWeight) so
+// Android never falls back to a synthesized system weight.
+export const fonts = {
+  regular: 'PlusJakartaSans_400Regular',
+  medium: 'PlusJakartaSans_500Medium',
+  semibold: 'PlusJakartaSans_600SemiBold',
+  bold: 'PlusJakartaSans_700Bold',
+  extrabold: 'PlusJakartaSans_800ExtraBold',
+} as const;
+
+export const typography = {
+  display: {
+    fontFamily: fonts.bold,
+    fontSize: 28,
     lineHeight: 34,
-    letterSpacing: -0.26,
+    letterSpacing: -0.5,
+    color: colors.ink,
   },
-  headlineLg: {
-    fontFamily: 'PlusJakartaSans_700Bold',
+  title: {
+    fontFamily: fonts.bold,
     fontSize: 24,
-    lineHeight: 32,
-    letterSpacing: -0.24,
+    lineHeight: 30,
+    letterSpacing: -0.5,
+    color: colors.ink,
   },
-  headlineMd: {
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    fontSize: 20,
-    lineHeight: 28,
-  },
-  headlineSm: {
-    fontFamily: 'PlusJakartaSans_600SemiBold',
+  headline: {
+    fontFamily: fonts.bold,
     fontSize: 18,
     lineHeight: 24,
+    letterSpacing: -0.3,
+    color: colors.ink,
   },
-  bodyLg: {
-    fontFamily: 'PlusJakartaSans_400Regular',
-    fontSize: 16,
-    lineHeight: 24,
+  subhead: {
+    fontFamily: fonts.bold,
+    fontSize: 15,
+    lineHeight: 20,
+    letterSpacing: -0.2,
+    color: colors.ink,
   },
-  bodyMd: {
-    fontFamily: 'PlusJakartaSans_400Regular',
+  body: {
+    fontFamily: fonts.medium,
     fontSize: 14,
     lineHeight: 20,
+    color: colors.slate,
   },
   bodySm: {
-    fontFamily: 'PlusJakartaSans_400Regular',
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  labelLg: {
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    fontSize: 14,
-    lineHeight: 20,
-    letterSpacing: 0.14,
-  },
-  labelMd: {
-    fontFamily: 'PlusJakartaSans_600SemiBold',
+    fontFamily: fonts.medium,
     fontSize: 12,
     lineHeight: 16,
-    letterSpacing: 0.24,
+    color: colors.slate,
   },
-  labelSm: {
-    fontFamily: 'PlusJakartaSans_700Bold',
+  label: {
+    fontFamily: fonts.semibold,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.ink,
+  },
+  button: {
+    fontFamily: fonts.bold,
+    fontSize: 16,
+    lineHeight: 20,
+    color: colors.onPrimary,
+  },
+  overline: {
+    fontFamily: fonts.bold,
     fontSize: 11,
     lineHeight: 14,
-    letterSpacing: 0.44,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: colors.slate,
   },
-};
+  metric: {
+    fontFamily: fonts.extrabold,
+    fontSize: 26,
+    lineHeight: 32,
+    letterSpacing: -0.6,
+    color: colors.ink,
+  },
+} satisfies Record<string, TextStyle>;

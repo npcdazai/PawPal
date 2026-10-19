@@ -1,354 +1,263 @@
-import React, { useEffect, useRef, useState } from 'react';
-import {
-  Animated,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii, shadows } from '../theme/colors';
-import { typography } from '../theme/typography';
+import { fonts, typography } from '../theme/typography';
 import { Icon } from '../components/Icon';
-import { MascotRef, MascotSprite } from '../components/MascotSprite';
-import { Toast } from '../components/Toast';
+import { Badge } from '../components/Badge';
+import { PrimaryButton } from '../components/Button';
+import { MascotAnchor, MascotScrollView } from '../mascot/MascotAnchor';
+import { useMascotActions, useMascotStatus } from '../mascot/MascotProvider';
+import { MASCOT_BASE_SIZE } from '../mascot/mascotModel';
+import { NATIVE_DRIVER } from '../mascot/MascotMachine';
+import { useAppNavigation } from '../navigation/useAppNavigation';
 
-interface SplashScreenProps {
-  onGetStarted: () => void;
-}
+const HERO_SIZE = 220;
+const MASCOT_SIZE = Math.round(MASCOT_BASE_SIZE * 1.1);
 
-export const SplashScreen: React.FC<SplashScreenProps> = ({ onGetStarted }) => {
-  const mascotRef = useRef<MascotRef>(null);
-  const [toastMessage, setToastMessage] = useState('');
-  const [toastVisible, setToastVisible] = useState(false);
-  const [countdown, setCountdown] = useState(4);
-
-  const [countdownProgress] = useState(() => new Animated.Value(0));
-  const isNavigatingRef = useRef(false);
-
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setToastVisible(true);
-    setTimeout(() => setToastVisible(false), 2000);
-  };
-
-  const handleStart = React.useCallback(() => {
-    if (isNavigatingRef.current) return;
-    isNavigatingRef.current = true;
-    showToast('Off to adventure! 🐾');
-
-    if (mascotRef.current) {
-      mascotRef.current.sprintOff(() => {
-        onGetStarted();
-      });
-    } else {
-      setTimeout(onGetStarted, 400);
-    }
-  }, [onGetStarted]);
-
-  useEffect(() => {
-    // 4-second linear progress bar
-    Animated.timing(countdownProgress, {
-      toValue: 1,
-      duration: 4000,
-      useNativeDriver: false,
-    }).start();
-
-    const interval = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          handleStart();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [countdownProgress, handleStart]);
-
-  const progressWidth = countdownProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0%', '100%'],
-  });
+export function SplashScreen() {
+  const { go } = useAppNavigation();
+  const { bark } = useMascotActions();
+  const { delight } = useMascotStatus();
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <Toast visible={toastVisible} message={toastMessage} />
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <MascotScrollView
+        contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* Top Helper Pill Badge */}
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => {
-            mascotRef.current?.hopAndBark('Woof! 🐾');
-            showToast('Woof! 🐾');
-          }}
-          style={styles.pillBadge}
-        >
-          <Icon name="pets" size={16} color={colors.onSecondaryFixedVariant} />
-          <Text style={styles.pillBadgeText}>Tap Corgi to bark</Text>
-        </TouchableOpacity>
+        <Badge label="🐾 PawPal Care Engine v2.4" tone="white" style={styles.versionTag} />
 
-        {/* Center Mascot Spotlight Stage */}
-        <View style={styles.spotlightWrapper}>
-          <View style={styles.spotlightRing}>
-            {/* Decorative accent dots */}
-            <View style={[styles.dot, styles.dotTopRight]} />
-            <View style={[styles.dot, styles.dotBottomLeft]} />
-            <View style={[styles.dot, styles.dotTopLeft]} />
-
-            {/* Mascot Character */}
-            <MascotSprite
-              ref={mascotRef}
-              size={210}
-              initialMessage="Woof! 🐾"
-              onTap={() => showToast('Woof! Barnaby is happy! 🐾')}
-            />
-          </View>
-        </View>
-
-        {/* Typography & Messaging */}
-        <View style={styles.textSection}>
-          <Text style={styles.headline}>Your Loyal Pet Care Companion</Text>
-          <Text style={styles.subhead}>
-            Track health, daily walks, nutrition, and keep your best friend joyful every day.
-          </Text>
-        </View>
-
-        {/* Daily Care Streak Floating Sheet Card */}
-        <View style={styles.streakCard}>
-          <View style={styles.streakLeft}>
-            <View style={styles.streakIconCircle}>
-              <Icon name="local-fire-department" size={24} color={colors.secondaryContainer} />
-            </View>
-            <View style={styles.streakTextCol}>
-              <Text style={styles.streakTitle}>Daily Care Streak</Text>
-              <Text style={styles.streakSubtitle}>14 happy days logged!</Text>
+        <View style={styles.heroGroup}>
+          <View style={styles.hero}>
+            <View style={[styles.orb, styles.orbAmber]} />
+            <View style={[styles.orb, styles.orbCoral]} />
+            <View style={[styles.orb, styles.orbBlue]} />
+            <View style={styles.heroCircle}>
+              <MascotAnchor id="splash" size={MASCOT_SIZE} style={styles.heroMascot} />
             </View>
           </View>
-          <View style={styles.activeBadge}>
-            <Text style={styles.activeBadgeText}>Active</Text>
-          </View>
-        </View>
 
-        {/* Primary CTA & Countdown Telemetry */}
-        <View style={styles.actionSection}>
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={handleStart}
-            style={styles.primaryButton}
+          <Pressable
+            onPress={bark}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.petPill, pressed && styles.pressed]}
           >
-            <Text style={styles.primaryButtonText}>Get Started</Text>
-            <Icon name="arrow-forward" size={20} color={colors.onPrimaryContainer} />
-          </TouchableOpacity>
-
-          <View style={styles.countdownRow}>
-            <View style={styles.countdownTrack}>
-              <Animated.View
-                style={[
-                  styles.countdownFill,
-                  {
-                    width: progressWidth,
-                  },
-                ]}
-              />
-            </View>
-            <Text style={styles.countdownLabel}>
-              {countdown > 0 ? `Auto-advancing in ${countdown}s...` : 'Advancing...'}
-            </Text>
-          </View>
+            <Text style={styles.petPillText}>❤️ Tap Barnaby to pet</Text>
+          </Pressable>
         </View>
-      </ScrollView>
+
+        <View style={styles.copy}>
+          <Text style={styles.title}>PawPal</Text>
+          <Text style={styles.subtitle}>Your loyal daily pet health, wellness & routine buddy</Text>
+        </View>
+
+        <View style={styles.cards}>
+          <View style={styles.card}>
+            <View style={styles.cardTop}>
+              <View style={[styles.cardIcon, { backgroundColor: colors.coralTint }]}>
+                <Icon name="local-fire-department" size={20} color={colors.coral} />
+              </View>
+              <Badge label="Ready" tone="success" dot />
+            </View>
+            <Text style={styles.cardLabel}>Daily Care Streak</Text>
+            <Text style={styles.cardValue}>14 happy days logged</Text>
+          </View>
+
+          <DelightCard count={delight} onPress={bark} />
+        </View>
+
+        <PrimaryButton
+          label="Tap to Begin"
+          onPress={() => go('begin')}
+        />
+      </MascotScrollView>
     </SafeAreaView>
   );
-};
+}
+
+/** Live petting counter; tapping it pets Barnaby too. */
+function DelightCard({ count, onPress }: { count: number; onPress: () => void }) {
+  const [pop] = useState(() => new Animated.Value(1));
+
+  useEffect(() => {
+    if (count === 0) return;
+    pop.setValue(1.18);
+    Animated.spring(pop, {
+      toValue: 1,
+      damping: 8,
+      stiffness: 260,
+      mass: 1,
+      useNativeDriver: NATIVE_DRIVER,
+    }).start();
+  }, [count, pop]);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Petting delight count ${count}. Tap to pet Barnaby.`}
+      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+    >
+      <View style={styles.cardTop}>
+        <View style={[styles.cardIcon, { backgroundColor: colors.primaryTint }]}>
+          <Icon name="favorite" size={20} color={colors.coral} />
+        </View>
+        <Badge label="Live" tone="coral" dot />
+      </View>
+      <Text style={styles.cardLabel}>Petting Delight</Text>
+      <View style={styles.delightRow}>
+        <Animated.Text style={[styles.delightCount, { transform: [{ scale: pop }] }]}>
+          {count}
+        </Animated.Text>
+        <Text style={styles.delightUnit}>{count === 1 ? 'happy pet' : 'happy pets'}</Text>
+      </View>
+    </Pressable>
+  );
+}
 
 const styles = StyleSheet.create({
-  safeArea: {
+  safe: {
     flex: 1,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.canvas,
   },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 32,
-    alignItems: 'center',
+  content: {
+    flexGrow: 1,
     justifyContent: 'space-between',
-    minHeight: '100%',
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 20,
+    gap: 16,
   },
-  pillBadge: {
-    flexDirection: 'row',
+  versionTag: {
+    alignSelf: 'center',
+    ...shadows.soft,
+  },
+  heroGroup: {
     alignItems: 'center',
     gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: radii.full,
-    backgroundColor: colors.secondaryFixed,
-    marginTop: 4,
-    marginBottom: 8,
   },
-  pillBadgeText: {
-    ...typography.labelSm,
-    color: colors.onSecondaryFixedVariant,
-  },
-  spotlightWrapper: {
-    width: '100%',
+  hero: {
+    alignSelf: 'center',
+    width: HERO_SIZE + 40,
+    height: HERO_SIZE + 12,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
   },
-  spotlightRing: {
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    backgroundColor: colors.peachBg,
+  heroCircle: {
+    width: HERO_SIZE,
+    height: HERO_SIZE,
+    borderRadius: HERO_SIZE / 2,
+    backgroundColor: colors.stage,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
-    ...shadows.glowSecondary,
   },
-  dot: {
+  heroMascot: {
+    marginTop: 8,
+  },
+  orb: {
     position: 'absolute',
     borderRadius: radii.full,
   },
-  dotTopRight: {
-    top: -6,
-    right: 28,
-    width: 20,
-    height: 20,
-    backgroundColor: colors.tertiaryFixedDim,
-    opacity: 0.6,
+  orbAmber: {
+    top: 10,
+    right: 18,
+    width: 22,
+    height: 22,
+    backgroundColor: colors.amber,
+    opacity: 0.55,
   },
-  dotBottomLeft: {
-    bottom: 24,
-    left: 16,
-    width: 14,
-    height: 14,
-    backgroundColor: colors.secondaryContainer,
-    opacity: 0.5,
+  orbCoral: {
+    bottom: 26,
+    left: 10,
+    width: 16,
+    height: 16,
+    backgroundColor: colors.coral,
+    opacity: 0.45,
   },
-  dotTopLeft: {
-    top: 48,
-    left: 24,
+  orbBlue: {
+    top: 54,
+    left: 22,
     width: 10,
     height: 10,
     backgroundColor: colors.primary,
-    opacity: 0.2,
+    opacity: 0.25,
   },
-  textSection: {
+  petPill: {
+    alignSelf: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: radii.full,
+    backgroundColor: colors.coralTint,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 74, 0.25)',
+  },
+  petPillText: {
+    fontFamily: fonts.bold,
+    fontSize: 14,
+    lineHeight: 18,
+    color: colors.coralInk,
+  },
+  copy: {
     alignItems: 'center',
-    marginTop: 10,
-    paddingHorizontal: 10,
+    gap: 6,
   },
-  headline: {
-    ...typography.headlineXlMobile,
-    color: colors.onSurface,
+  title: {
+    ...typography.display,
     textAlign: 'center',
   },
-  subhead: {
-    ...typography.bodyMd,
-    color: colors.onSurfaceVariant,
+  subtitle: {
+    ...typography.body,
     textAlign: 'center',
-    marginTop: 8,
-    maxWidth: 290,
+    maxWidth: 280,
   },
-  streakCard: {
-    width: '100%',
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: radii.md,
-    padding: 16,
-    marginVertical: 18,
+  cards: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  card: {
+    flex: 1,
+    padding: 14,
+    gap: 4,
+    borderRadius: radii.lg,
+    backgroundColor: colors.card,
+    ...shadows.card,
+  },
+  cardTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    ...shadows.card,
+    marginBottom: 6,
   },
-  streakLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-  },
-  streakIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.peachBg,
+  cardIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  streakTextCol: {
-    flex: 1,
+  cardLabel: {
+    ...typography.overline,
   },
-  streakTitle: {
-    ...typography.headlineSm,
-    fontSize: 16,
-    color: colors.onSurface,
+  cardValue: {
+    ...typography.subhead,
   },
-  streakSubtitle: {
+  delightRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
+  },
+  delightCount: {
+    ...typography.metric,
+    fontSize: 24,
+    lineHeight: 28,
+    color: colors.coral,
+  },
+  delightUnit: {
     ...typography.bodySm,
-    color: colors.onSurfaceVariant,
-    marginTop: 2,
   },
-  activeBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: radii.full,
-    backgroundColor: colors.primaryFixed,
-  },
-  activeBadgeText: {
-    ...typography.labelMd,
-    color: colors.primary,
-    fontWeight: '700',
-  },
-  actionSection: {
-    width: '100%',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 4,
-  },
-  primaryButton: {
-    width: '100%',
-    height: 56,
-    borderRadius: radii.full,
-    backgroundColor: colors.primaryContainer,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    ...shadows.glowPrimary,
-  },
-  primaryButtonText: {
-    ...typography.labelLg,
-    color: colors.onPrimaryContainer,
-    fontWeight: '700',
-  },
-  countdownRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 4,
-  },
-  countdownTrack: {
-    width: 96,
-    height: 6,
-    borderRadius: radii.full,
-    backgroundColor: colors.surfaceContainerHigh,
-    overflow: 'hidden',
-  },
-  countdownFill: {
-    height: '100%',
-    borderRadius: radii.full,
-    backgroundColor: colors.primaryContainer,
-  },
-  countdownLabel: {
-    ...typography.labelSm,
-    color: colors.outline,
-    fontWeight: '500',
+  pressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.98 }],
   },
 });

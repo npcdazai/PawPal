@@ -1,92 +1,54 @@
+/**
+ * Pawsome Companion design tokens, reverse-engineered from the Figma pet care
+ * design system. Surfaces are warm (ivory canvas, peach mascot stages), brand
+ * actions are Primary Blue, and Coral/Amber echo Barnaby's red leash and coat.
+ */
 export const colors = {
-  surface: '#faf8ff',
-  surfaceBright: '#faf8ff',
-  surfaceDim: '#d9d9e2',
-  surfaceContainerLowest: '#ffffff',
-  surfaceContainerLow: '#f3f3fb',
-  surfaceContainer: '#ededf6',
-  surfaceContainerHigh: '#e7e7f0',
-  surfaceContainerHighest: '#e2e2ea',
-  onSurface: '#191b21',
-  onSurfaceVariant: '#434656',
-  outline: '#737687',
-  outlineVariant: '#c3c5d8',
-  primary: '#0049db',
-  onPrimary: '#ffffff',
-  primaryContainer: '#2962ff',
-  onPrimaryContainer: '#f7f5ff',
-  primaryFixed: '#dce1ff',
-  primaryFixedDim: '#b6c4ff',
-  onPrimaryFixed: '#001550',
-  onPrimaryFixedVariant: '#003ab3',
-  secondary: '#ae3115',
-  onSecondary: '#ffffff',
-  secondaryContainer: '#fd6a49',
-  onSecondaryContainer: '#640f00',
-  secondaryFixed: '#ffdad2',
-  secondaryFixedDim: '#ffb4a3',
-  onSecondaryFixed: '#3d0600',
-  onSecondaryFixedVariant: '#8c1900',
-  tertiary: '#7b4f00',
-  onTertiary: '#ffffff',
-  tertiaryContainer: '#9b6500',
-  onTertiaryContainer: '#fff4eb',
-  tertiaryFixed: '#ffddb4',
-  tertiaryFixedDim: '#ffb955',
-  onTertiaryFixed: '#291800',
-  onTertiaryFixedVariant: '#633f00',
-  peachBg: '#FFF3E8',
-  peachLight: '#FFFDF9',
-  inverseSurface: '#2e3037',
-  inverseOnSurface: '#f0f0f9',
-  error: '#ba1a1a',
-  onError: '#ffffff',
-  errorContainer: '#ffdad6',
-  onErrorContainer: '#93000a',
-};
+  // Surfaces
+  canvas: '#FFFDF9',
+  stage: '#FFF3E8',
+  card: '#FFFFFF',
+  input: '#FAFAFA',
+  inputBorder: '#EFEFEF',
+  divider: '#F2EDE7',
+  track: '#EEF1F6',
+
+  // Brand
+  primary: '#2962FF',
+  primaryPressed: '#1F4FDB',
+  primaryTint: '#E8F0FE',
+  onPrimary: '#FFFFFF',
+
+  // Accents
+  coral: '#FF6B4A',
+  coralInk: '#C8432A',
+  coralTint: '#FFE9E3',
+  amber: '#FFB340',
+  amberInk: '#9A5B00',
+  amberTint: '#FFF1DA',
+  success: '#2ECC71',
+  successInk: '#178A4C',
+  successTint: '#E4F8EC',
+
+  // Text
+  ink: '#181A20',
+  slate: '#757B8A',
+  placeholder: '#A0A6B5',
+} as const;
 
 export const radii = {
   sm: 8,
   md: 16,
   lg: 24,
-  xl: 32,
-  full: 9999,
-};
+  xl: 28,
+  full: 999,
+} as const;
 
 export const shadows = {
-  card: {
-    shadowColor: '#181a20',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    elevation: 3,
-  },
-  cardHover: {
-    shadowColor: '#181a20',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 5,
-  },
-  glowPrimary: {
-    shadowColor: '#2962ff',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.28,
-    shadowRadius: 20,
-    elevation: 6,
-  },
-  glowSecondary: {
-    shadowColor: '#ffb955',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
-    elevation: 5,
-  },
-  toast: {
-    shadowColor: '#181a20',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.16,
-    shadowRadius: 24,
-    elevation: 8,
-  },
-};
+  card: { boxShadow: '0px 12px 32px rgba(24, 26, 32, 0.06)' },
+  soft: { boxShadow: '0px 4px 12px rgba(24, 26, 32, 0.06)' },
+  float: { boxShadow: '0px 16px 40px rgba(24, 26, 32, 0.12)' },
+  primary: { boxShadow: '0px 8px 20px rgba(41, 98, 255, 0.25)' },
+  coral: { boxShadow: '0px 6px 14px rgba(255, 107, 74, 0.30)' },
+  focusRing: { boxShadow: '0px 0px 0px 4px rgba(41, 98, 255, 0.10)' },
+} as const;

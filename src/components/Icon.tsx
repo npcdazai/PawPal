@@ -28,3 +28,4 @@ export const Icon: React.FC<IconProps> = ({
   }
   return <MaterialIcons name={name as any} size={size} color={color} style={style} />;
 };
+

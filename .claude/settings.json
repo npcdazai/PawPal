@@ -1,4 +1,27 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(file assets/*.png)",
+      "Bash(grep -E \"^\\(react-native-web|react-dom|expo-router|react-native-screens|expo-haptics|react-native-reanimated|expo-linking|expo-constants|@react-navigation\\)$\")",
+      "Bash(npx tsc *)",
+      "Bash(npx expo *)",
+      "Bash(adb devices *)",
+      "WebFetch(domain:docs.expo.dev)",
+      "Read(//c/Program Files/Google/Chrome/Application/**)",
+      "Read(//c/Users/Admin.DESKTOP-I7I22HT/AppData/Local/**)",
+      "Bash(node -e \"console.log\\(require\\('eslint-plugin-react-hooks/package.json'\\).version\\)\")",
+      "Bash(grep -E \"^expo-splash-screen$|^@expo-google-fonts$\")",
+      "Bash(grep -v \"^\\\\s*\\\\*\\\\s*$\")",
+      "PowerShell($p = \"C:\\\\Pratham\\\\Pratham\\\\Developer\\\\PawPal\\\\node_modules\\\\react-native-reanimated\\\\android\\\\.cxx\\\\Debug\\\\5o1f522a\\\\arm64-v8a\\\\CMakeFiles\\\\reanimated.dir\\\\C_\\\\Pratham\\\\Pratham\\\\Developer\\\\PawPal\\\\node_modules\\\\react-native-reanimated\\\\Common\\\\cpp\\\\reanimated\\\\CSS\\\\interpolation\\\\operations\\\\\"; \"Dir path length: $\\($p.Length\\)\"; try { \"LongPathsEnabled: $\\(\\(Get-ItemProperty 'HKLM:\\\\SYSTEM\\\\CurrentControlSet\\\\Control\\\\FileSystem' -Name LongPathsEnabled -ErrorAction Stop\\).LongPathsEnabled\\)\" } catch { \"LongPathsEnabled: not set\" }; \"--- CMake versions in SDK ---\"; Get-ChildItem \"$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\cmake\" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name; \"--- ninja version ---\"; & \"$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\cmake\\\\3.22.1\\\\bin\\\\ninja.exe\" --version)",
+      "Bash(node -e ' *)",
+      "Bash(git rm *)",
+      "PowerShell(\"--- android tracked by git? ---\"; git ls-files android | Select-Object -First 3; git check-ignore -v android 2>$null; \"--- reanimated version ---\"; \\(Get-Content node_modules\\\\react-native-reanimated\\\\package.json | ConvertFrom-Json\\).version; \"--- cmake refs in reanimated build.gradle ---\"; Select-String -Path node_modules\\\\react-native-reanimated\\\\android\\\\build.gradle -Pattern 'cmake|ninja' | ForEach-Object { \"$\\($_.LineNumber\\): $\\($_.Line.Trim\\(\\)\\)\" }; \"--- local.properties ---\"; Get-Content android\\\\local.properties -ErrorAction SilentlyContinue; \"--- sdkmanager ---\"; Get-ChildItem \"$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\cmdline-tools\" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)",
+      "PowerShell(Get-ChildItem \"$env:LOCALAPPDATA\\\\Android\\\\Sdk\" | Select-Object -ExpandProperty Name; \"--- NDK ---\"; Get-ChildItem \"$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\ndk\" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name; \"--- java ---\"; java -version 2>&1 | Select-Object -First 1)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8081/)",
+      "Bash(node cdp.mjs flow1.json shots)",
+      "Bash(node cdp.mjs ping.json shots)"
+    ]
+  },
   "enabledPlugins": {
     "expo@claude-plugins-official": true
   }

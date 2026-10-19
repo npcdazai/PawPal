@@ -1,547 +1,274 @@
 import React, { useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii, shadows } from '../theme/colors';
-import { typography } from '../theme/typography';
+import { fonts, typography } from '../theme/typography';
 import { Icon } from '../components/Icon';
-import { MascotRef, MascotSprite } from '../components/MascotSprite';
-import { Toast } from '../components/Toast';
+import { Badge } from '../components/Badge';
+import { FormField } from '../components/FormField';
+import { PrimaryButton, SecondaryButton } from '../components/Button';
+import { Toast, useToast } from '../components/Toast';
+import { MascotAnchor, MascotScrollView } from '../mascot/MascotAnchor';
+import { useMascotActions, useMascotStatus } from '../mascot/MascotProvider';
+import type { ViewHandle } from '../mascot/MascotMachine';
+import type { MascotState } from '../mascot/mascotModel';
+import { useAppNavigation } from '../navigation/useAppNavigation';
 
-interface LoginScreenProps {
-  onLoginSuccess: () => void;
-  onNavigateRegister: () => void;
-}
+const MASCOT_SIZE = 168;
+/** The card rises over the header so its top edge meets Barnaby's paws. */
+const CARD_OVERLAP = 44;
+const HEADER_BOTTOM_PAD = 26;
 
-export const LoginScreen: React.FC<LoginScreenProps> = ({
-  onLoginSuccess,
-  onNavigateRegister,
-}) => {
-  const mascotRef = useRef<MascotRef>(null);
+const STATUS_COPY: Partial<Record<MascotState, string>> = {
+  STATE_ENTER_FROM_RIGHT: 'Barnaby is trotting over',
+  STATE_ENTER_FROM_LEFT: 'Barnaby is trotting over',
+  STATE_CURIOUS_TILT: 'Barnaby is curious',
+  STATE_PEEKING_DUCK: 'Barnaby is not peeking',
+  STATE_WOOF_BARK: 'Barnaby says woof',
+  STATE_EXIT_TO_LEFT: 'Barnaby is zooming ahead',
+  STATE_EXIT_TO_RIGHT: 'Barnaby is zooming ahead',
+};
 
-  const [email, setEmail] = useState('alex@companions.pet');
-  const [password, setPassword] = useState('••••••••••••');
+export function LoginScreen() {
+  const { go } = useAppNavigation();
+  const { focusField, blurField } = useMascotActions();
+  const { state } = useMascotStatus();
+  const { message, show } = useToast();
+  const cardRef = useRef<ViewHandle>(null);
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [keepLoggedIn, setKeepLoggedIn] = useState(true);
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [loginCompleted, setLoginCompleted] = useState(false);
-
-  const [emailFocused, setEmailFocused] = useState(false);
-  const [passwordFocused, setPasswordFocused] = useState(false);
-
-  const [toastMessage, setToastMessage] = useState('');
-  const [toastVisible, setToastVisible] = useState(false);
-
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setToastVisible(true);
-    setTimeout(() => setToastVisible(false), 2200);
-  };
-
-  const handleLogin = () => {
-    if (isSubmitting || loginCompleted) return;
-    setIsSubmitting(true);
-
-    // Trigger excited sprint-off
-    if (mascotRef.current) {
-      mascotRef.current.sprintOff();
-    }
-
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setLoginCompleted(true);
-      showToast('Connected to Barnaby! 🐾');
-
-      setTimeout(() => {
-        onLoginSuccess();
-      }, 700);
-    }, 1100);
-  };
+  const enterDashboard = () => go('authenticated');
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <Toast visible={toastVisible} message={toastMessage} />
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <MascotScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+        showsVerticalScrollIndicator={false}
       >
-        {/* Top Mascot Stage */}
-        <View style={styles.mascotStage}>
-          {/* Status Pill */}
-          <View style={styles.statusPill}>
-            <View style={styles.pulsingDot} />
-            <Text style={styles.statusPillText}>Barnaby is waiting for you!</Text>
-            <Text style={{ fontSize: 12 }}>🐾</Text>
-          </View>
-
-          {/* Interactive Mascot */}
-          <View style={styles.mascotWrapper}>
-            <MascotSprite
-              ref={mascotRef}
-              size={170}
-              initialMessage="Woof! 🐾"
-              onTap={() => showToast('Woof! Barnaby loves you! 🐾')}
-            />
-            {/* Tactile Ground Shadow */}
-            <View style={styles.groundShadow} />
-          </View>
+        <View style={styles.header}>
+          <Badge
+            label={STATUS_COPY[state] ?? 'Barnaby is watching happily'}
+            tone="white"
+            dot
+            uppercase
+            style={styles.statusPill}
+          />
+          <MascotAnchor id="login" size={MASCOT_SIZE} clipRef={cardRef} />
         </View>
 
-        {/* Form Card */}
-        <View style={styles.formCard}>
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.title}>Welcome Back!</Text>
+        <View ref={cardRef} style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.title}>Welcome back!</Text>
             <Text style={styles.subtitle}>
-              {"Sign in to sync your pet's wellness log and daily routines."}
+              {"Sign in to sync Barnaby's wellness log and daily routines."}
             </Text>
           </View>
 
-          {/* Email Field Group */}
-          <View style={styles.fieldGroup}>
-            <View style={styles.fieldHeader}>
-              <Text style={styles.fieldLabel}>Email or Pet Parent ID</Text>
-              <View style={styles.pawIdBadge}>
-                <Text style={styles.pawIdText}>PawID Ready</Text>
-              </View>
-            </View>
-            <View
-              style={[
-                styles.inputContainer,
-                emailFocused && styles.inputContainerFocused,
-              ]}
-            >
-              <Icon
-                name="mail"
-                size={20}
-                color={emailFocused ? colors.primary : colors.outline}
-                style={styles.inputIconLeft}
-              />
-              <TextInput
-                style={styles.input}
-                value={email}
-                onChangeText={setEmail}
-                placeholder="alex@companions.pet"
-                placeholderTextColor={`${colors.outline}B0`}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                onFocus={() => {
-                  setEmailFocused(true);
-                  mascotRef.current?.onFocusInput('text');
-                }}
-                onBlur={() => {
-                  setEmailFocused(false);
-                  mascotRef.current?.onBlurInput();
-                }}
-              />
-            </View>
-          </View>
+          <FormField
+            label="Email Address"
+            icon="mail"
+            placeholder="alex@companions.pet"
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            autoComplete="email"
+            keyboardType="email-address"
+            textContentType="emailAddress"
+            returnKeyType="next"
+            accessory={<Badge label="PawID Ready" tone="primary" />}
+            onFocus={() => focusField('text')}
+            onBlur={blurField}
+          />
 
-          {/* Password Field Group */}
-          <View style={styles.fieldGroup}>
-            <View style={styles.fieldHeader}>
-              <Text style={styles.fieldLabel}>Security Password</Text>
-              <TouchableOpacity
-                onPress={() => showToast('Password reset link sent to registered email!')}
+          <FormField
+            label="Password"
+            icon="lock"
+            placeholder="Enter your password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry={!showPassword}
+            autoComplete="password"
+            textContentType="password"
+            returnKeyType="go"
+            onSubmitEditing={enterDashboard}
+            accessory={
+              <Pressable
+                onPress={() => show('Reset link sent to your inbox 📬')}
+                accessibilityRole="link"
+                hitSlop={8}
               >
-                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-              </TouchableOpacity>
-            </View>
-            <View
-              style={[
-                styles.inputContainer,
-                passwordFocused && styles.inputContainerFocused,
-              ]}
-            >
-              <Icon
-                name="lock"
-                size={20}
-                color={passwordFocused ? colors.primary : colors.outline}
-                style={styles.inputIconLeft}
-              />
-              <TextInput
-                style={[styles.input, { paddingRight: 48 }]}
-                value={password}
-                onChangeText={setPassword}
-                placeholder="••••••••••••"
-                placeholderTextColor={`${colors.outline}B0`}
-                secureTextEntry={!showPassword}
-                onFocus={() => {
-                  setPasswordFocused(true);
-                  mascotRef.current?.onFocusInput('password');
-                }}
-                onBlur={() => {
-                  setPasswordFocused(false);
-                  mascotRef.current?.onBlurInput();
-                }}
-              />
-              <TouchableOpacity
-                onPress={() => setShowPassword(!showPassword)}
-                style={styles.eyeButton}
+                <Text style={styles.link}>Forgot Password?</Text>
+              </Pressable>
+            }
+            trailing={
+              <Pressable
+                onPress={() => setShowPassword((visible) => !visible)}
+                accessibilityRole="button"
+                accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                hitSlop={10}
               >
                 <Icon
                   name={showPassword ? 'visibility-off' : 'visibility'}
                   size={20}
-                  color={colors.outline}
+                  color={colors.slate}
                 />
-              </TouchableOpacity>
-            </View>
-          </View>
+              </Pressable>
+            }
+            onFocus={() => focusField('password')}
+            onBlur={blurField}
+          />
 
-          {/* Keep Logged In Checkbox */}
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => setKeepLoggedIn(!keepLoggedIn)}
+          <Pressable
+            onPress={() => setKeepLoggedIn((value) => !value)}
+            role="checkbox"
+            aria-checked={keepLoggedIn}
             style={styles.checkboxRow}
           >
-            <View
-              style={[
-                styles.checkboxBox,
-                keepLoggedIn && styles.checkboxBoxChecked,
-              ]}
-            >
-              {keepLoggedIn && <Icon name="check" size={16} color="#ffffff" />}
+            <View style={[styles.checkbox, keepLoggedIn && styles.checkboxOn]}>
+              {keepLoggedIn ? <Icon name="check" size={16} color={colors.onPrimary} /> : null}
             </View>
             <Text style={styles.checkboxLabel}>Keep me logged in for 30 days</Text>
-          </TouchableOpacity>
+          </Pressable>
 
-          {/* Primary Action CTA */}
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={handleLogin}
-            disabled={isSubmitting || loginCompleted}
-            style={[
-              styles.submitButton,
-              loginCompleted && { backgroundColor: '#10B981' },
-            ]}
-          >
-            {isSubmitting ? (
-              <ActivityIndicator color={colors.onPrimary} size="small" />
-            ) : loginCompleted ? (
-              <View style={styles.submitRow}>
-                <Icon name="done" size={20} color={colors.onPrimary} />
-                <Text style={styles.submitText}>Connected!</Text>
-              </View>
-            ) : (
-              <View style={styles.submitRow}>
-                <Text style={styles.submitText}>Log In</Text>
-                <Icon name="arrow-forward" size={18} color={colors.onPrimary} />
-              </View>
-            )}
-          </TouchableOpacity>
+          <PrimaryButton label="Log in" onPress={enterDashboard} />
 
-          {/* Divider */}
           <View style={styles.dividerRow}>
             <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>OR SIGN IN WITH</Text>
+            <Text style={styles.dividerText}>or continue with</Text>
             <View style={styles.dividerLine} />
           </View>
 
-          {/* Quick Access Grid */}
-          <View style={styles.socialGrid}>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => {
-                showToast('PawPass biometric verification active');
-                handleLogin();
-              }}
-              style={styles.socialButtonPrimary}
-            >
-              <Icon name="pets" size={18} color={colors.primary} />
-              <Text style={styles.socialPrimaryText}>PawPass ID</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => {
-                showToast('Passkey verified successfully');
-                handleLogin();
-              }}
-              style={styles.socialButtonTertiary}
-            >
-              <Icon name="key" size={18} color={colors.tertiary} />
-              <Text style={styles.socialTertiaryText}>Passkey</Text>
-            </TouchableOpacity>
+          <View style={styles.ssoRow}>
+            <SecondaryButton label="🐾 PawPass ID" tone="blue" onPress={enterDashboard} />
+            <SecondaryButton label="🔑 Passkey" tone="peach" onPress={enterDashboard} />
           </View>
 
-          {/* Footer Register Link */}
-          <View style={styles.registerRow}>
-            <Text style={styles.registerPrompt}>New pet parent? </Text>
-            <TouchableOpacity onPress={onNavigateRegister}>
-              <Text style={styles.registerLink}>Register now</Text>
-            </TouchableOpacity>
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>New companion parent? </Text>
+            <Pressable
+              onPress={() => go('register')}
+              accessibilityRole="link"
+              hitSlop={8}
+            >
+              <Text style={styles.footerLink}>Register now</Text>
+            </Pressable>
           </View>
         </View>
-
-        {/* Footnote */}
-        <View style={styles.footnoteRow}>
-          <Icon name="verified-user" size={16} color={colors.outline} />
-          <Text style={styles.footnoteText}>End-to-End Encrypted Health Records</Text>
-        </View>
-      </ScrollView>
+      </MascotScrollView>
+      <Toast message={message} />
     </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  safeArea: {
+  safe: {
     flex: 1,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.stage,
   },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
+  scroll: {
+    backgroundColor: colors.canvas,
+  },
+  content: {
     paddingBottom: 32,
-  },
-  mascotStage: {
-    width: '100%',
-    backgroundColor: colors.onTertiaryContainer,
-    borderRadius: radii.lg,
-    paddingTop: 20,
-    paddingBottom: 36,
-    alignItems: 'center',
-    position: 'relative',
-  },
-  statusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.surfaceContainerLowest,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: radii.full,
-    marginBottom: 8,
-    ...shadows.card,
-  },
-  pulsingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.secondaryContainer,
-  },
-  statusPillText: {
-    ...typography.labelSm,
-    color: colors.secondary,
-    letterSpacing: 0.3,
-  },
-  mascotWrapper: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  groundShadow: {
-    position: 'absolute',
-    bottom: -6,
-    width: 110,
-    height: 12,
-    borderRadius: radii.full,
-    backgroundColor: 'rgba(41, 24, 0, 0.08)',
-  },
-  formCard: {
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: radii.lg,
-    padding: 20,
-    marginTop: -24,
-    zIndex: 10,
-    ...shadows.card,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 16,
+    gap: 6,
+    paddingTop: 14,
+    paddingBottom: HEADER_BOTTOM_PAD,
+    backgroundColor: colors.stage,
+    borderBottomLeftRadius: 40,
+    borderBottomRightRadius: 40,
+  },
+  statusPill: {
+    alignSelf: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    ...shadows.soft,
+  },
+  card: {
+    marginTop: -CARD_OVERLAP,
+    marginHorizontal: 16,
+    padding: 22,
+    gap: 16,
+    borderRadius: radii.xl,
+    backgroundColor: colors.card,
+    ...shadows.card,
+  },
+  cardHeader: {
+    gap: 4,
   },
   title: {
-    ...typography.headlineLg,
-    color: colors.onSurface,
+    ...typography.title,
   },
   subtitle: {
-    ...typography.bodySm,
-    color: colors.outline,
-    textAlign: 'center',
-    marginTop: 4,
+    ...typography.body,
   },
-  fieldGroup: {
-    marginBottom: 14,
-  },
-  fieldHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-    marginBottom: 6,
-  },
-  fieldLabel: {
-    ...typography.labelMd,
-    color: colors.onSurfaceVariant,
-  },
-  pawIdBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: radii.full,
-    backgroundColor: colors.primaryFixed,
-  },
-  pawIdText: {
-    ...typography.labelSm,
-    fontSize: 10,
+  link: {
+    fontFamily: fonts.bold,
+    fontSize: 13,
     color: colors.primary,
-  },
-  forgotPasswordText: {
-    ...typography.labelMd,
-    color: colors.primary,
-  },
-  inputContainer: {
-    height: 54,
-    borderRadius: radii.full,
-    backgroundColor: colors.surfaceContainerLow,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
-  },
-  inputContainerFocused: {
-    backgroundColor: colors.surfaceContainerLowest,
-    borderColor: colors.primary,
-    ...shadows.cardHover,
-  },
-  inputIconLeft: {
-    marginRight: 10,
-  },
-  input: {
-    flex: 1,
-    height: '100%',
-    ...typography.bodyMd,
-    color: colors.onSurface,
-  },
-  eyeButton: {
-    position: 'absolute',
-    right: 16,
-    padding: 4,
   },
   checkboxRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 6,
-    marginBottom: 12,
+    gap: 10,
   },
-  checkboxBox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    backgroundColor: colors.surfaceContainerHigh,
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 7,
+    borderWidth: 1.5,
+    borderColor: colors.inputBorder,
+    backgroundColor: colors.input,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkboxBoxChecked: {
+  checkboxOn: {
+    borderColor: colors.primary,
     backgroundColor: colors.primary,
   },
   checkboxLabel: {
-    ...typography.bodySm,
-    color: colors.onSurfaceVariant,
-  },
-  submitButton: {
-    width: '100%',
-    height: 56,
-    borderRadius: radii.full,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...shadows.glowPrimary,
-    marginTop: 4,
-  },
-  submitRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  submitText: {
-    ...typography.labelLg,
-    color: colors.onPrimary,
-    fontWeight: '700',
+    ...typography.body,
+    color: colors.ink,
   },
   dividerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 18,
+    gap: 12,
   },
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: colors.surfaceContainerHigh,
+    backgroundColor: colors.divider,
   },
   dividerText: {
-    ...typography.labelSm,
-    color: colors.outline,
-    paddingHorizontal: 12,
-    letterSpacing: 0.8,
-  },
-  socialGrid: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  socialButtonPrimary: {
-    flex: 1,
-    height: 48,
-    borderRadius: radii.full,
-    backgroundColor: 'rgba(220, 225, 255, 0.5)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  socialPrimaryText: {
-    ...typography.labelMd,
-    color: colors.onPrimaryFixed,
-    fontWeight: '600',
-  },
-  socialButtonTertiary: {
-    flex: 1,
-    height: 48,
-    borderRadius: radii.full,
-    backgroundColor: 'rgba(255, 221, 180, 0.4)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  socialTertiaryText: {
-    ...typography.labelMd,
-    color: colors.onTertiaryFixed,
-    fontWeight: '600',
-  },
-  registerRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  registerPrompt: {
     ...typography.bodySm,
-    color: colors.onSurfaceVariant,
+    color: colors.placeholder,
   },
-  registerLink: {
-    ...typography.labelLg,
-    color: colors.primary,
-    fontWeight: '700',
-  },
-  footnoteRow: {
+  ssoRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 20,
+    gap: 12,
   },
-  footnoteText: {
-    ...typography.labelSm,
-    color: colors.outline,
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  footerText: {
+    ...typography.body,
+  },
+  footerLink: {
+    fontFamily: fonts.bold,
+    fontSize: 14,
+    color: colors.primary,
   },
 });
