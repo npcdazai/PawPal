@@ -15,6 +15,10 @@ import { useAppNavigation } from '../navigation/useAppNavigation';
 import { MascotAnchor, MascotScrollView } from '../mascot/MascotAnchor';
 import { useMascotActions } from '../mascot/MascotProvider';
 import { DOCK_SCALE, MASCOT_BASE_SIZE } from '../mascot/mascotModel';
+import { Avatar } from '../components/Avatar';
+import { useBookings, type WalkBooking } from '../booking/BookingsProvider';
+import { DURATIONS, formatMoney } from '../booking/walkPricing';
+import { WALKERS, WALKER_IDS, type WalkerId } from '../data/careTeam';
 
 const DOCK_SIZE = Math.round(MASCOT_BASE_SIZE * DOCK_SCALE);
 const DOCK_BADGE = DOCK_SIZE + 12;
@@ -79,7 +83,9 @@ const toSection = (value: string | undefined): DashboardSection =>
   DASHBOARD_SECTIONS.find((section) => section === value) ?? DASHBOARD_SECTIONS[0];
 
 export function DashboardScreen() {
-  const { goToTab } = useAppNavigation();
+  const { go, goToTab } = useAppNavigation();
+  const { bookings } = useBookings();
+  const nextWalk = bookings[0];
   const { bark } = useMascotActions();
   const { message, show } = useToast();
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
@@ -253,6 +259,12 @@ export function DashboardScreen() {
           </View>
         </View>
 
+        <WalkerBookingCard
+          booking={nextWalk}
+          onBook={() => go('bookWalker')}
+          onRebook={(walkerId) => go('bookWalker', { walker: walkerId })}
+        />
+
         {/* Quick care */}
         <View style={styles.section}>
           <SectionHeader title="Quick Care" meta="Tap to log instantly" />
@@ -378,6 +390,97 @@ export function DashboardScreen() {
 
       <Toast message={message} bottomOffset={BOTTOM_NAV_HEIGHT + 28} />
     </SafeAreaView>
+  );
+}
+
+interface WalkerBookingCardProps {
+  booking: WalkBooking | undefined;
+  onBook: () => void;
+  onRebook: (walkerId: WalkerId) => void;
+}
+
+/** "Book a Dog Walker" entry point; shows the next walk once one is booked. */
+function WalkerBookingCard({ booking, onBook, onRebook }: WalkerBookingCardProps) {
+  if (booking) {
+    const walker = WALKERS[booking.walkerId];
+    const duration = DURATIONS.find((option) => option.key === booking.duration);
+    return (
+      <View style={[styles.card, styles.walkerCard]}>
+        <View style={styles.walkerTop}>
+          <Avatar initials={walker.initials} tint={walker.tint} ink={walker.ink} size={48} />
+          <View style={styles.walkerCopy}>
+            <View style={styles.cardTitleRow}>
+              <Text style={styles.walkerTitle}>Next walk booked</Text>
+              <Badge label="Confirmed" tone="success" dot />
+            </View>
+            <Text style={styles.cardMeta}>
+              {booking.dateLabel}, {booking.startLabel} · {duration?.title} with {walker.shortName}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.walkerBottom}>
+          <Text style={styles.walkerTotal}>
+            {formatMoney(booking.total)}
+            {booking.recurring ? <Text style={styles.cardMeta}> · weekly</Text> : null}
+          </Text>
+          <Pressable
+            onPress={() => onRebook(booking.walkerId)}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.walkerButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.walkerButtonText}>Book again</Text>
+            <Icon name="arrow-forward" size={16} color={colors.onPrimary} />
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  const marcus = WALKERS.marcus;
+  return (
+    <Pressable
+      onPress={onBook}
+      accessibilityRole="button"
+      aria-label="Book a dog walker"
+      style={({ pressed }) => [styles.card, styles.walkerCard, pressed && styles.pressed]}
+    >
+      <View style={styles.walkerTop}>
+        <View style={styles.walkerIcon}>
+          <Icon name="directions-walk" size={26} color={colors.onPrimary} />
+        </View>
+        <View style={styles.walkerCopy}>
+          <Text style={styles.walkerTitle}>Book a Dog Walker</Text>
+          <Text style={styles.cardMeta}>
+            {marcus.shortName} is free today · from $22 per walk
+          </Text>
+        </View>
+        <View style={styles.avatarStack}>
+          {WALKER_IDS.slice(0, 3).map((id, index) => {
+            const walker = WALKERS[id];
+            return (
+              <Avatar
+                key={id}
+                initials={walker.initials}
+                tint={walker.tint}
+                ink={walker.ink}
+                size={30}
+                style={[styles.stackedAvatar, index > 0 && styles.stackedOverlap]}
+              />
+            );
+          })}
+        </View>
+      </View>
+      <View style={styles.walkerBottom}>
+        <View style={styles.walkerPerks}>
+          <Badge label="Insured" tone="success" dot />
+          <Badge label="Live GPS" tone="primary" />
+        </View>
+        <View style={styles.walkerButton}>
+          <Text style={styles.walkerButtonText}>Book now</Text>
+          <Icon name="arrow-forward" size={16} color={colors.onPrimary} />
+        </View>
+      </View>
+    </Pressable>
   );
 }
 
@@ -524,6 +627,71 @@ const styles = StyleSheet.create({
   dispenseText: {
     fontFamily: fonts.bold,
     fontSize: 13,
+    color: colors.onPrimary,
+  },
+  walkerCard: {
+    gap: 14,
+  },
+  walkerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  walkerIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    ...shadows.primary,
+  },
+  walkerCopy: {
+    flex: 1,
+    gap: 3,
+  },
+  walkerTitle: {
+    ...typography.subhead,
+    fontSize: 16,
+  },
+  avatarStack: {
+    flexDirection: 'row',
+  },
+  stackedAvatar: {
+    borderWidth: 2,
+    borderColor: colors.card,
+  },
+  stackedOverlap: {
+    marginLeft: -10,
+  },
+  walkerBottom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  walkerPerks: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  walkerTotal: {
+    fontFamily: fonts.extrabold,
+    fontSize: 18,
+    color: colors.ink,
+  },
+  walkerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: radii.full,
+    backgroundColor: colors.primary,
+    ...shadows.primary,
+  },
+  walkerButtonText: {
+    fontFamily: fonts.bold,
+    fontSize: 14,
     color: colors.onPrimary,
   },
   section: {

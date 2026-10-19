@@ -10,6 +10,7 @@ import {
   PlusJakartaSans_700Bold,
   PlusJakartaSans_800ExtraBold,
 } from '@expo-google-fonts/plus-jakarta-sans';
+import { BookingsProvider } from '../booking/BookingsProvider';
 import { MascotProvider } from '../mascot/MascotProvider';
 import { MascotStage } from '../mascot/MascotStage';
 import { AppTabBar } from '../navigation/AppTabBar';
@@ -41,26 +42,28 @@ export default function RootLayout() {
 
   return (
     <MascotProvider>
-      <StatusBar style="dark" />
-      <View style={styles.root}>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            animation: 'slide_from_right',
-            contentStyle: { backgroundColor: colors.canvas },
-          }}
-        >
-          {ROUTE_LIST.map((route) => (
-            <Stack.Screen
-              key={route.key}
-              name={route.name}
-              options={{ title: route.title, gestureEnabled: route.gestureEnabled ?? true }}
-            />
-          ))}
-        </Stack>
-        <MascotStage />
-        <AppTabBar />
-      </View>
+      <BookingsProvider>
+        <StatusBar style="dark" />
+        <View style={styles.root}>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              animation: 'slide_from_right',
+              contentStyle: { backgroundColor: colors.canvas },
+            }}
+          >
+            {ROUTE_LIST.map((route) => (
+              <Stack.Screen
+                key={route.key}
+                name={route.name}
+                options={{ title: route.title, gestureEnabled: route.gestureEnabled ?? true }}
+              />
+            ))}
+          </Stack>
+          <MascotStage />
+          <AppTabBar />
+        </View>
+      </BookingsProvider>
     </MascotProvider>
   );
 }

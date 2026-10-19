@@ -77,6 +77,18 @@ export const NAVIGATION = {
         profile: { name: 'profile', path: '/profile', title: 'Profile', stack: 'push' },
       },
     },
+    // Full-screen task flows with their own bottom action bar.
+    tasks: {
+      tabBar: false,
+      routes: {
+        bookWalker: {
+          name: 'book-walker',
+          path: '/book-walker',
+          title: 'Dog Walker Booking',
+          stack: 'push',
+        },
+      },
+    },
   },
 
   flows: {
@@ -86,6 +98,8 @@ export const NAVIGATION = {
     authenticated: { to: 'dashboard', action: 'reset' }, //  Log in / Create Account
     closeProfile: { to: 'dashboard', action: 'back' }, //    Profile back arrow
     signOut: { to: 'login', action: 'reset' }, //            Profile "Log out"
+    bookWalker: { to: 'bookWalker', action: 'push' }, //     "Book a Dog Walker" / Rebook
+    closeBooking: { to: 'dashboard', action: 'back' }, //    Booking back arrow / Done
   },
 
   tabBar: {

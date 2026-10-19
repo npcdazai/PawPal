@@ -54,11 +54,11 @@ export function useAppNavigation() {
     [navigate, router]
   );
 
-  /** Follow a named flow from NAVIGATION.flows. */
+  /** Follow a named flow from NAVIGATION.flows, optionally with route params. */
   const go = useCallback(
-    (flow: FlowKey) => {
+    (flow: FlowKey, params?: Record<string, string>) => {
       const { to, action } = NAVIGATION.flows[flow];
-      run(action, to);
+      run(action, to, params);
     },
     [run]
   );

@@ -1,57 +1,78 @@
-import React, { useRef, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useState, type ReactNode } from 'react';
+import { LayoutAnimation, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
 import { Icon } from '../components/Icon';
-import { Badge } from '../components/Badge';
-import { ProgressBar } from '../components/ProgressBar';
+import { Badge, type BadgeTone } from '../components/Badge';
+import { Avatar } from '../components/Avatar';
 import { Toggle } from '../components/Toggle';
 import { Toast, useToast } from '../components/Toast';
 import { BOTTOM_NAV_HEIGHT } from '../components/BottomNavigation';
 import { MascotAnchor, MascotScrollView } from '../mascot/MascotAnchor';
 import { useMascotActions, useMascotStatus } from '../mascot/MascotProvider';
-import type { ViewHandle } from '../mascot/MascotMachine';
 import { useAppNavigation } from '../navigation/useAppNavigation';
+import { useBookings } from '../booking/BookingsProvider';
+import { WALKERS, type WalkerId } from '../data/careTeam';
 
-const MASCOT_SIZE = 140;
+const MASCOT_SIZE = 100;
+const BASE_WALKS = 28;
 
-const ACHIEVEMENTS = [
-  { emoji: '🔥', title: '14-Day Streak', detail: 'Daily care logged', progress: 1 },
-  { emoji: '🦮', title: '100 km Club', detail: '86 / 100 km walked', progress: 0.86 },
-  { emoji: '🩺', title: 'Vet Visit Ace', detail: 'Annual check-up done', progress: 1 },
-  { emoji: '🦴', title: 'Treat Taster', detail: '15 / 20 treats', progress: 0.75 },
+type PetTab = 'passport' | 'diet' | 'guide';
+type AccountPanel = 'payment' | 'notifications' | null;
+
+const PET_TABS: { key: PetTab; label: string }[] = [
+  { key: 'passport', label: 'Health Passport' },
+  { key: 'diet', label: 'Diet Schedule' },
+  { key: 'guide', label: 'Care Guide' },
 ];
 
-const FAVOURITES = [
-  '🎾 Tennis balls',
-  '🐿️ Squirrel patrol',
-  '🥕 Carrot crunch',
-  '💤 Sofa naps',
-  '🛁 Definitely not baths',
-];
+const FAVOURITES = ['🎾 Tennis balls', '🐿️ Squirrel patrol', '🥕 Carrot crunch', '💤 Sofa naps'];
+
+const shortDate = (offsetDays: number) => {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
 
 export function ProfileScreen() {
-  const { go } = useAppNavigation();
+  const { go, goToTab } = useAppNavigation();
   const { bark, setHapticsEnabled } = useMascotActions();
   const { delight, hapticsEnabled } = useMascotStatus();
+  const { bookings } = useBookings();
   const { message, show } = useToast();
-  const identityRef = useRef<ViewHandle>(null);
 
+  const [petTab, setPetTab] = useState<PetTab>('passport');
+  const [lunaOpen, setLunaOpen] = useState(false);
+  const [panel, setPanel] = useState<AccountPanel>(null);
   const [walkReminders, setWalkReminders] = useState(true);
   const [mealReminders, setMealReminders] = useState(true);
+  const [dates] = useState(() => ({ nextSit: shortDate(23), lastSpa: shortDate(-16) }));
 
-  const goBack = () => go('closeProfile');
-  const logOut = () => go('signOut');
+  const lastWalker = WALKERS[bookings[0]?.walkerId ?? 'marcus'];
+  const walkCount = BASE_WALKS + bookings.length;
+
+  const open = (url: string, failure: string) => {
+    Linking.openURL(url).catch(() => show(failure));
+  };
+
+  const animateNext = () => LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+
+  const togglePanel = (next: Exclude<AccountPanel, null>) => {
+    animateNext();
+    setPanel((current) => (current === next ? null : next));
+  };
+
+  const book = (walkerId: WalkerId) => go('bookWalker', { walker: walkerId });
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <MascotScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.topBar}>
           <Pressable
-            onPress={goBack}
+            onPress={() => go('closeProfile')}
             accessibilityRole="button"
-            accessibilityLabel="Back to dashboard"
+            aria-label="Back to dashboard"
             hitSlop={6}
             style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
           >
@@ -61,161 +82,353 @@ export function ProfileScreen() {
           <View style={styles.iconButtonSpacer} />
         </View>
 
-        {/* Barnaby hero: he stands on the identity card */}
-        <View style={styles.hero}>
-          <View style={styles.heroBadges}>
-            <Badge label="Playful Pup 🍊" tone="amber" />
-            <Badge label="PawID #BRN-2041" tone="primary" />
-          </View>
-          <MascotAnchor id="profile" size={MASCOT_SIZE} clipRef={identityRef} />
-          <View ref={identityRef} style={styles.identity}>
-            <View style={styles.identityCopy}>
-              <Text style={styles.petName}>Barnaby</Text>
-              <Text style={styles.petBreed}>Pembroke Welsh Corgi · Tap him for a woof</Text>
-            </View>
-            <View style={styles.stats}>
-              <Stat value="3 yrs" label="Age" />
-              <View style={styles.statDivider} />
-              <Stat value="12.4 kg" label="Weight" />
-              <View style={styles.statDivider} />
-              <Stat value={String(delight)} label="Pets today" accent />
-            </View>
-          </View>
-        </View>
-
         {/* Pet parent */}
-        <View style={[styles.card, styles.ownerCard]}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>S</Text>
+        <View style={[styles.card, styles.owner]}>
+          <View style={styles.ownerRow}>
+            <View style={styles.avatarRing}>
+              <Avatar initials="SJ" tint={colors.amber} ink={colors.card} size={68} />
+            </View>
+            <View style={styles.ownerCopy}>
+              <View style={styles.inlineRow}>
+                <Text style={styles.ownerName}>Sarah Jenkins</Text>
+                <Icon name="verified" size={20} color={colors.primary} />
+              </View>
+              <View style={styles.inlineRow}>
+                <Icon name="location-on" size={15} color={colors.slate} />
+                <Text style={styles.meta}>San Francisco, CA · Since Mar 2023</Text>
+              </View>
+              <Badge label="Verified Pet Parent" tone="primary" />
+            </View>
           </View>
-          <View style={styles.ownerCopy}>
-            <Text style={styles.ownerName}>Sarah</Text>
-            <Text style={styles.meta}>sarah@companions.pet</Text>
+
+          <View style={styles.contactRow}>
+            <ContactChip
+              icon="mail"
+              label="sarah.j@companions.pet"
+              onPress={() => open('mailto:sarah.j@companions.pet', 'No mail app available')}
+            />
+            <ContactChip
+              icon="call"
+              label="+1 (555) 382-9104"
+              onPress={() => open('tel:+15553829104', 'Calling isn’t available here')}
+            />
           </View>
-          <Badge label="Pet parent" tone="coral" style={styles.centerSelf} />
+
+          <View style={styles.stats}>
+            <Stat value="14 🔥" label="Day Streak" accent={colors.coral} />
+            <View style={styles.statDivider} />
+            <Stat value="4.9 ★" label="Parent Rating" accent={colors.amberInk} />
+            <View style={styles.statDivider} />
+            <Stat value="2 🐾" label="Registered" accent={colors.primary} />
+          </View>
         </View>
 
-        <Section title="Health Passport" meta="Updated today">
-          <View style={styles.card}>
-            <Row icon="vaccines" tint={colors.successTint} ink={colors.successInk} label="Vaccinations">
-              <Badge label="Up to date" tone="success" dot />
-            </Row>
-            <Row icon="medical-services" tint={colors.primaryTint} ink={colors.primary} label="Primary vet">
-              <Text style={styles.rowValue}>Dr. Ava Wells</Text>
-            </Row>
-            <Row icon="memory" tint={colors.amberTint} ink={colors.amberInk} label="Microchip">
-              <Text style={styles.rowValue}>985 112 004 517</Text>
-            </Row>
-            <Row icon="no-food" tint={colors.coralTint} ink={colors.coral} label="Allergies" last>
-              <Badge label="Chicken" tone="coral" />
-            </Row>
-          </View>
-        </Section>
-
-        <Section title="Achievements" meta="3 of 4 earned">
-          <View style={styles.achievementGrid}>
-            {ACHIEVEMENTS.map((achievement) => {
-              const earned = achievement.progress >= 1;
-              return (
-                <View key={achievement.title} style={[styles.card, styles.achievement]}>
-                  <View style={styles.achievementTop}>
-                    <View style={[styles.achievementIcon, earned && styles.achievementIconEarned]}>
-                      <Text style={styles.achievementEmoji}>{achievement.emoji}</Text>
-                    </View>
-                    {earned ? <Icon name="verified" size={18} color={colors.primary} /> : null}
-                  </View>
-                  <Text style={styles.achievementTitle}>{achievement.title}</Text>
-                  <Text style={styles.meta}>{achievement.detail}</Text>
-                  <ProgressBar
-                    progress={achievement.progress}
-                    color={earned ? colors.success : colors.amber}
-                    height={6}
-                  />
-                </View>
-              );
-            })}
-          </View>
-        </Section>
-
-        <Section title="Favourite Things" meta="Tap one">
-          <View style={styles.chips}>
-            {FAVOURITES.map((favourite) => (
-              <Pressable
-                key={favourite}
-                onPress={bark}
-                accessibilityRole="button"
-                accessibilityHint="Barnaby woofs happily"
-                style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
-              >
-                <Text style={styles.chipText}>{favourite}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </Section>
-
-        <Section title="Preferences">
-          <View style={styles.card}>
-            <Row
-              icon="notifications-active"
+        {/* Booked services */}
+        <Section
+          title="Booked Services"
+          icon="calendar-month"
+          action={{ label: 'View History', onPress: () => goToTab('activities') }}
+        >
+          <View style={styles.serviceRow}>
+            <ServiceCard
+              icon="directions-walk"
               tint={colors.primaryTint}
               ink={colors.primary}
-              label="Walk reminders"
-              detail="7:30 AM & 6:00 PM"
+              label="Walks"
+              count={walkCount}
+              detail={`Last: ${lastWalker.shortName}`}
+              footer={
+                <Pressable
+                  onPress={() => book(lastWalker.id)}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.serviceButton, pressed && styles.pressed]}
+                >
+                  <Text style={styles.serviceButtonText}>Rebook</Text>
+                </Pressable>
+              }
+            />
+            <ServiceCard
+              icon="holiday-village"
+              tint={colors.amberTint}
+              ink={colors.amberInk}
+              label="Sits"
+              count={14}
+              detail={`Next: ${dates.nextSit}`}
+              footer={<Badge label="Elena R." tone="coral" style={styles.centerSelf} />}
+            />
+            <ServiceCard
+              icon="content-cut"
+              tint={colors.coralTint}
+              ink={colors.coral}
+              label="Groom"
+              count={9}
+              detail={`Spa: ${dates.lastSpa}`}
+              footer={<Badge label="Paws Spa" tone="amber" style={styles.centerSelf} />}
+            />
+          </View>
+          <View style={[styles.card, styles.hoursStrip]}>
+            <Icon name="verified-user" size={18} color={colors.primary} />
+            <Text style={[styles.rowLabel, styles.flex]}>184 Total Care Hours Logged</Text>
+            <Badge label="100% Insured" tone="success" />
+          </View>
+        </Section>
+
+        {/* Pets */}
+        <Section title="My Pets (2)" icon="favorite" iconColor={colors.coral}>
+          <View style={[styles.card, styles.petCard]}>
+            <View style={styles.petAccent} />
+            <View style={styles.petRow}>
+              <View style={styles.petStage}>
+                <MascotAnchor id="profile" size={MASCOT_SIZE} />
+              </View>
+              <View style={styles.petCopy}>
+                <Text style={styles.petName}>Barnaby</Text>
+                <Badge label="Primary Companion" tone="coral" />
+                <Text style={styles.meta}>Pembroke Welsh Corgi</Text>
+                <Text style={styles.meta}>2 yrs 4 mos · 12.4 kg</Text>
+              </View>
+            </View>
+
+            <View style={styles.chips}>
+              <Trait icon="qr-code-2" label="Microchipped #9820" tone="primary" />
+              <Trait icon="check-circle" label="Vaccinated" tone="success" />
+              <Trait label="🐶 Friendly with dogs" tone="amber" />
+              <Trait label="🌾 Sensitive Stomach" tone="coral" />
+            </View>
+
+            <View style={styles.vetBox}>
+              <View style={[styles.iconCircle, { backgroundColor: colors.card }]}>
+                <Icon name="medical-services" size={20} color={colors.primary} />
+              </View>
+              <View style={styles.flex}>
+                <View style={styles.spaceBetween}>
+                  <Text style={styles.vetOverline}>Upcoming Vet Visit</Text>
+                  <Text style={styles.vetWhen}>In 12 days</Text>
+                </View>
+                <Text style={styles.rowLabel}>Dental & Routine Checkup</Text>
+                <Text style={styles.meta}>Dr. Ava Wells · VCA San Francisco</Text>
+              </View>
+            </View>
+
+            <View style={styles.petTabs} role="tablist">
+              {PET_TABS.map((tab) => {
+                const selected = tab.key === petTab;
+                return (
+                  <Pressable
+                    key={tab.key}
+                    onPress={() => {
+                      animateNext();
+                      setPetTab(tab.key);
+                    }}
+                    role="tab"
+                    aria-selected={selected}
+                    style={[styles.petTab, selected && styles.petTabActive]}
+                  >
+                    <Text style={[styles.petTabText, selected && styles.petTabTextActive]}>
+                      {tab.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {petTab === 'passport' ? (
+              <View>
+                <InfoRow icon="vaccines" label="Vaccinations" value="Rabies · DHPP · Bordetella" />
+                <InfoRow icon="memory" label="Microchip" value="ID ending 9820" />
+                <InfoRow icon="no-food" label="Allergies" value="Chicken" />
+                <InfoRow icon="monitor-weight" label="Weight" value="12.4 kg · healthy range" last />
+              </View>
+            ) : null}
+            {petTab === 'diet' ? (
+              <View>
+                <InfoRow icon="wb-twilight" label="7:30 AM · Breakfast" value="1.5 cups kibble + bone broth" />
+                <InfoRow icon="wb-sunny" label="12:30 PM · Training" value="Up to 10 small treats" />
+                <InfoRow icon="nights-stay" label="6:30 PM · Dinner" value="1.5 cups kibble" />
+                <InfoRow icon="no-food" label="Avoid" value="Chicken (sensitive stomach)" last />
+              </View>
+            ) : null}
+            {petTab === 'guide' ? (
+              <View style={styles.guide}>
+                <Text style={styles.meta}>Favourite things — tap one to make Barnaby woof</Text>
+                <View style={styles.chips}>
+                  {FAVOURITES.map((favourite) => (
+                    <Pressable
+                      key={favourite}
+                      onPress={bark}
+                      accessibilityRole="button"
+                      style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
+                    >
+                      <Text style={styles.chipText}>{favourite}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Text style={styles.meta}>
+                  Harness on the entryway rack · {delight} {delight === 1 ? 'pet' : 'pets'} today
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          <Pressable
+            onPress={() => {
+              animateNext();
+              setLunaOpen((value) => !value);
+            }}
+            accessibilityRole="button"
+            aria-expanded={lunaOpen}
+            style={[styles.card, styles.lunaCard]}
+          >
+            <View style={styles.lunaRow}>
+              <View style={styles.lunaAvatar}>
+                <Text style={styles.lunaEmoji}>🐱</Text>
+              </View>
+              <View style={styles.flex}>
+                <Text style={styles.lunaName}>Luna</Text>
+                <Text style={styles.meta}>Scottish Fold Cat · 1 yr 2 mos</Text>
+                <View style={styles.chips}>
+                  <Badge label="🏠 Indoor Only" tone="amber" />
+                  <Badge label="Spayed" tone="primary" />
+                  <Badge label="✨ Calm" tone="success" />
+                </View>
+              </View>
+              <Icon name={lunaOpen ? 'expand-less' : 'chevron-right'} size={24} color={colors.slate} />
+            </View>
+            {lunaOpen ? (
+              <View style={styles.lunaDetails}>
+                <InfoRow icon="restaurant" label="Feeding" value="⅓ cup wet food, twice daily" />
+                <InfoRow icon="home" label="Routine" value="Litter refreshed by sitter daily" />
+                <InfoRow icon="medical-services" label="Vet" value="Dr. Ava Wells · in 3 months" last />
+              </View>
+            ) : null}
+          </Pressable>
+        </Section>
+
+        {/* Care team */}
+        <Section title="Favorite Care Team" meta="3 Trusted">
+          <View style={[styles.card, styles.listCard]}>
+            <TeamRow
+              avatar={<Avatar initials="MT" tint={WALKERS.marcus.tint} ink={WALKERS.marcus.ink} size={46} />}
+              name="Marcus T."
+              role="Walk Star"
+              roleTone="primary"
+              detail="18 walks completed with Barnaby"
+              actionIcon="edit-calendar"
+              actionLabel="Book Marcus"
+              onAction={() => book('marcus')}
+            />
+            <TeamRow
+              avatar={<Avatar initials="ER" tint={WALKERS.elena.tint} ink={WALKERS.elena.ink} size={46} />}
+              name="Elena R."
+              role="Overnight Sitter"
+              roleTone="amber"
+              detail="8 stays · Key holder access"
+              actionIcon="edit-calendar"
+              actionLabel="Book Elena"
+              onAction={() => book('elena')}
+            />
+            <TeamRow
+              avatar={
+                <View style={[styles.iconCircle, styles.spaAvatar]}>
+                  <Icon name="bathtub" size={22} color={colors.coral} />
+                </View>
+              }
+              name="Paws & Bubbles Spa"
+              role="Groomer"
+              roleTone="coral"
+              detail="Hydro-massage & fur de-shedding"
+              actionIcon="call"
+              actionLabel="Call Paws & Bubbles Spa"
+              onAction={() => open('tel:+15552017788', 'Calling isn’t available here')}
+              last
+            />
+          </View>
+        </Section>
+
+        {/* Account */}
+        <Section title="Account & Safety">
+          <View style={[styles.card, styles.listCard]}>
+            <AccountRow
+              icon="credit-card"
+              tint={colors.primaryTint}
+              ink={colors.primary}
+              title="Payment Methods"
+              detail="Apple Pay · Visa ending 4289"
+              expanded={panel === 'payment'}
+              onPress={() => togglePanel('payment')}
             >
-              <Toggle
-                accessibilityLabel="Walk reminders"
+              <InfoRow icon="phone-iphone" label="Apple Pay" value="Default" />
+              <InfoRow icon="credit-card" label="Visa •••• 4289" value="Expires 08/28" last />
+            </AccountRow>
+            <AccountRow
+              icon="notifications-active"
+              tint={colors.amberTint}
+              ink={colors.amberInk}
+              title="Notification Preferences"
+              detail="Live walk GPS & medication alerts"
+              expanded={panel === 'notifications'}
+              onPress={() => togglePanel('notifications')}
+            >
+              <ToggleRow
+                label="Walk reminders"
+                detail="7:30 AM & 6:00 PM"
                 value={walkReminders}
-                onValueChange={(next) => {
+                onChange={(next) => {
                   setWalkReminders(next);
                   show(next ? 'Walk reminders on 🦮' : 'Walk reminders paused');
                 }}
               />
-            </Row>
-            <Row
-              icon="restaurant"
-              tint={colors.stage}
-              ink={colors.coral}
-              label="Meal reminders"
-              detail="8:00 AM & 7:00 PM"
-            >
-              <Toggle
-                accessibilityLabel="Meal reminders"
+              <ToggleRow
+                label="Meal reminders"
+                detail="8:00 AM & 7:00 PM"
                 value={mealReminders}
-                onValueChange={(next) => {
+                onChange={(next) => {
                   setMealReminders(next);
                   show(next ? 'Meal reminders on 🍲' : 'Meal reminders paused');
                 }}
               />
-            </Row>
-            <Row
-              icon="vibration"
-              tint={colors.amberTint}
-              ink={colors.amberInk}
-              label="Haptic paw taps"
-              detail="Feel Barnaby arrive and woof"
-              last
-            >
-              <Toggle
-                accessibilityLabel="Haptic paw taps"
+              <ToggleRow
+                label="Haptic paw taps"
+                detail="Feel Barnaby arrive and woof"
                 value={hapticsEnabled}
-                onValueChange={(next) => {
+                onChange={(next) => {
                   setHapticsEnabled(next);
                   show(next ? 'Paw taps on 🐾' : 'Paw taps off');
                 }}
               />
-            </Row>
+            </AccountRow>
+            <AccountRow
+              icon="local-hospital"
+              tint={colors.coralTint}
+              ink={colors.coral}
+              title="Emergency Vet Hotline"
+              detail="Mission Pet 24/7 ER on speed dial"
+              detailColor={colors.coralInk}
+              trailingIcon="call"
+              onPress={() => open('tel:+14155550199', 'Calling isn’t available here')}
+            />
+            <AccountRow
+              icon="help-center"
+              tint={colors.successTint}
+              ink={colors.successInk}
+              title="Help & Live Concierge"
+              detail="Available 24/7 for pet emergencies"
+              trailingIcon="mail"
+              onPress={() => open('mailto:care@pawpal.app', 'No mail app available')}
+              last
+            />
           </View>
         </Section>
 
         <Pressable
-          onPress={logOut}
+          onPress={() => go('signOut')}
           accessibilityRole="button"
           style={({ pressed }) => [styles.logout, pressed && styles.pressed]}
         >
           <Icon name="logout" size={20} color={colors.coralInk} />
-          <Text style={styles.logoutText}>Log out</Text>
+          <Text style={styles.logoutText}>Log Out of PawPal</Text>
         </Pressable>
-        <Text style={styles.version}>🐾 Pawsome Care Engine v2.4</Text>
+        <Text style={styles.version}>PawPal App v3.4.2 · Made with 🐾 for Barnaby & Luna</Text>
       </MascotScrollView>
 
       <Toast message={message} bottomOffset={BOTTOM_NAV_HEIGHT + 28} />
@@ -223,48 +436,240 @@ export function ProfileScreen() {
   );
 }
 
-function Stat({ value, label, accent = false }: { value: string; label: string; accent?: boolean }) {
-  return (
-    <View style={styles.stat}>
-      <Text style={[styles.statValue, accent && styles.statValueAccent]}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-}
+// ─── Pieces ──────────────────────────────────────────────────────────────────
 
-function Section({ title, meta, children }: { title: string; meta?: string; children: ReactNode }) {
+function Section({
+  title,
+  icon,
+  iconColor = colors.primary,
+  meta,
+  action,
+  children,
+}: {
+  title: string;
+  icon?: string;
+  iconColor?: string;
+  meta?: string;
+  action?: { label: string; onPress: () => void };
+  children: ReactNode;
+}) {
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>{title}</Text>
+        <View style={styles.inlineRow}>
+          {icon ? <Icon name={icon} size={20} color={iconColor} /> : null}
+          <Text style={styles.sectionTitle}>{title}</Text>
+        </View>
         {meta ? <Text style={styles.meta}>{meta}</Text> : null}
+        {action ? (
+          <Pressable onPress={action.onPress} accessibilityRole="link" hitSlop={8}>
+            <Text style={styles.link}>{action.label}</Text>
+          </Pressable>
+        ) : null}
       </View>
       {children}
     </View>
   );
 }
 
-interface RowProps {
+function ContactChip({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="link"
+      style={({ pressed }) => [styles.contactChip, pressed && styles.pressed]}
+    >
+      <Icon name={icon} size={16} color={colors.primary} />
+      <Text style={styles.contactText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function Stat({ value, label, accent }: { value: string; label: string; accent: string }) {
+  return (
+    <View style={styles.stat}>
+      <Text style={[styles.statValue, { color: accent }]}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+interface ServiceCardProps {
   icon: string;
   tint: string;
   ink: string;
   label: string;
-  detail?: string;
-  last?: boolean;
-  children: ReactNode;
+  count: number;
+  detail: string;
+  footer: ReactNode;
 }
 
-function Row({ icon, tint, ink, label, detail, last = false, children }: RowProps) {
+function ServiceCard({ icon, tint, ink, label, count, detail, footer }: ServiceCardProps) {
   return (
-    <View style={[styles.row, !last && styles.rowDivider]}>
-      <View style={[styles.rowIcon, { backgroundColor: tint }]}>
-        <Icon name={icon} size={20} color={ink} />
+    <View style={[styles.card, styles.service]}>
+      <View style={styles.serviceTop}>
+        <View style={[styles.serviceIcon, { backgroundColor: tint }]}>
+          <Icon name={icon} size={18} color={ink} />
+        </View>
+        <Text style={[styles.serviceLabel, { color: ink }]}>{label.toUpperCase()}</Text>
       </View>
-      <View style={styles.rowCopy}>
+      <Text style={styles.serviceCount}>{count}</Text>
+      <Text style={styles.meta} numberOfLines={1}>
+        {detail}
+      </Text>
+      <View style={styles.serviceFooter}>{footer}</View>
+    </View>
+  );
+}
+
+function Trait({ icon, label, tone }: { icon?: string; label: string; tone: BadgeTone }) {
+  if (!icon) return <Badge label={label} tone={tone} />;
+  return (
+    <View style={styles.trait}>
+      <Icon name={icon} size={14} color={colors.primary} />
+      <Text style={styles.traitText}>{label}</Text>
+    </View>
+  );
+}
+
+function InfoRow({
+  icon,
+  label,
+  value,
+  last = false,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  last?: boolean;
+}) {
+  return (
+    <View style={[styles.infoRow, !last && styles.rowDivider]}>
+      <Icon name={icon} size={18} color={colors.slate} />
+      <Text style={[styles.rowLabel, styles.flex]}>{label}</Text>
+      <Text style={styles.infoValue}>{value}</Text>
+    </View>
+  );
+}
+
+interface TeamRowProps {
+  avatar: ReactNode;
+  name: string;
+  role: string;
+  roleTone: BadgeTone;
+  detail: string;
+  actionIcon: string;
+  actionLabel: string;
+  onAction: () => void;
+  last?: boolean;
+}
+
+function TeamRow({
+  avatar,
+  name,
+  role,
+  roleTone,
+  detail,
+  actionIcon,
+  actionLabel,
+  onAction,
+  last = false,
+}: TeamRowProps) {
+  return (
+    <View style={[styles.teamRow, !last && styles.rowDivider]}>
+      {avatar}
+      <View style={styles.flex}>
+        <View style={styles.inlineRow}>
+          <Text style={styles.rowLabel}>{name}</Text>
+          <Badge label={role} tone={roleTone} />
+        </View>
+        <Text style={styles.meta}>{detail}</Text>
+      </View>
+      <Pressable
+        onPress={onAction}
+        accessibilityRole="button"
+        aria-label={actionLabel}
+        hitSlop={6}
+        style={({ pressed }) => [styles.teamAction, pressed && styles.pressed]}
+      >
+        <Icon name={actionIcon} size={20} color={colors.primary} />
+      </Pressable>
+    </View>
+  );
+}
+
+interface AccountRowProps {
+  icon: string;
+  tint: string;
+  ink: string;
+  title: string;
+  detail: string;
+  detailColor?: string;
+  expanded?: boolean;
+  trailingIcon?: string;
+  onPress: () => void;
+  last?: boolean;
+  children?: ReactNode;
+}
+
+function AccountRow({
+  icon,
+  tint,
+  ink,
+  title,
+  detail,
+  detailColor,
+  expanded,
+  trailingIcon,
+  onPress,
+  last = false,
+  children,
+}: AccountRowProps) {
+  const expandable = expanded !== undefined;
+  return (
+    <View style={!last && styles.rowDivider}>
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        aria-expanded={expandable ? expanded : undefined}
+        style={({ pressed }) => [styles.accountRow, pressed && styles.rowPressed]}
+      >
+        <View style={[styles.iconCircle, { backgroundColor: tint }]}>
+          <Icon name={icon} size={20} color={ink} />
+        </View>
+        <View style={styles.flex}>
+          <Text style={styles.rowLabel}>{title}</Text>
+          <Text style={[styles.meta, detailColor ? { color: detailColor } : null]}>{detail}</Text>
+        </View>
+        <Icon
+          name={expandable ? (expanded ? 'expand-less' : 'expand-more') : (trailingIcon ?? 'chevron-right')}
+          size={22}
+          color={colors.slate}
+        />
+      </Pressable>
+      {expanded ? <View style={styles.accountPanel}>{children}</View> : null}
+    </View>
+  );
+}
+
+function ToggleRow({
+  label,
+  detail,
+  value,
+  onChange,
+}: {
+  label: string;
+  detail: string;
+  value: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <View style={styles.toggleRow}>
+      <View style={styles.flex}>
         <Text style={styles.rowLabel}>{label}</Text>
-        {detail ? <Text style={styles.meta}>{detail}</Text> : null}
+        <Text style={styles.meta}>{detail}</Text>
       </View>
-      <View style={styles.rowTrailing}>{children}</View>
+      <Toggle accessibilityLabel={label} value={value} onValueChange={onChange} />
     </View>
   );
 }
@@ -279,6 +684,24 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     paddingBottom: BOTTOM_NAV_HEIGHT + 48,
     gap: 22,
+  },
+  flex: {
+    flex: 1,
+    gap: 2,
+  },
+  inlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  spaceBetween: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  centerSelf: {
+    alignSelf: 'center',
   },
   topBar: {
     flexDirection: 'row',
@@ -301,43 +724,64 @@ const styles = StyleSheet.create({
   topTitle: {
     ...typography.headline,
   },
-  hero: {
-    alignItems: 'center',
+  card: {
     padding: 16,
-    borderRadius: radii.xl,
-    backgroundColor: colors.stage,
-  },
-  heroBadges: {
-    alignSelf: 'stretch',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  identity: {
-    alignSelf: 'stretch',
-    marginTop: -16,
-    padding: 16,
-    gap: 14,
     borderRadius: radii.lg,
     backgroundColor: colors.card,
     ...shadows.card,
   },
-  identityCopy: {
+  owner: {
+    gap: 14,
+    borderRadius: radii.xl,
+  },
+  ownerRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: 14,
   },
-  petName: {
+  avatarRing: {
+    padding: 3,
+    borderRadius: 40,
+    borderWidth: 2,
+    borderColor: colors.amberTint,
+  },
+  ownerCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  ownerName: {
     ...typography.title,
+    fontSize: 22,
+    lineHeight: 28,
   },
-  petBreed: {
-    ...typography.body,
-    textAlign: 'center',
+  meta: {
+    ...typography.bodySm,
+  },
+  contactRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  contactChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radii.full,
+    backgroundColor: colors.primaryTint,
+  },
+  contactText: {
+    fontFamily: fonts.semibold,
+    fontSize: 12,
+    color: colors.ink,
   },
   stats: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.divider,
+    paddingVertical: 12,
+    borderRadius: radii.md,
+    backgroundColor: colors.stage,
   },
   stat: {
     flex: 1,
@@ -348,10 +792,6 @@ const styles = StyleSheet.create({
     fontFamily: fonts.extrabold,
     fontSize: 18,
     lineHeight: 22,
-    color: colors.ink,
-  },
-  statValueAccent: {
-    color: colors.coral,
   },
   statLabel: {
     ...typography.bodySm,
@@ -359,132 +799,208 @@ const styles = StyleSheet.create({
   statDivider: {
     width: 1,
     height: 28,
-    backgroundColor: colors.divider,
-  },
-  card: {
-    padding: 16,
-    borderRadius: radii.lg,
-    backgroundColor: colors.card,
-    ...shadows.card,
-  },
-  ownerCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.amber,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    fontFamily: fonts.extrabold,
-    fontSize: 18,
-    color: colors.card,
-  },
-  centerSelf: {
-    alignSelf: 'center',
-  },
-  ownerCopy: {
-    flex: 1,
-    gap: 2,
-  },
-  ownerName: {
-    ...typography.subhead,
-  },
-  meta: {
-    ...typography.bodySm,
+    backgroundColor: 'rgba(24, 26, 32, 0.08)',
   },
   section: {
     gap: 12,
   },
   sectionHeader: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
     justifyContent: 'space-between',
   },
   sectionTitle: {
     ...typography.headline,
   },
-  row: {
+  link: {
+    fontFamily: fonts.bold,
+    fontSize: 14,
+    color: colors.primary,
+  },
+  serviceRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  service: {
+    flex: 1,
+    padding: 12,
+    gap: 2,
+  },
+  serviceTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  serviceIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  serviceLabel: {
+    fontFamily: fonts.extrabold,
+    fontSize: 10,
+    letterSpacing: 0.6,
+  },
+  serviceCount: {
+    ...typography.metric,
+  },
+  serviceFooter: {
+    marginTop: 8,
+    minHeight: 28,
+    justifyContent: 'center',
+  },
+  serviceButton: {
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderRadius: radii.full,
+    backgroundColor: colors.primaryTint,
+  },
+  serviceButtonText: {
+    fontFamily: fonts.bold,
+    fontSize: 12,
+    color: colors.primary,
+  },
+  hoursStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+  },
+  petCard: {
+    gap: 14,
+    borderRadius: radii.xl,
+    overflow: 'hidden',
+    paddingTop: 20,
+  },
+  petAccent: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 5,
+    backgroundColor: colors.coral,
+    experimental_backgroundImage: `linear-gradient(90deg, ${colors.coral}, ${colors.amber})`,
+  },
+  petRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  petStage: {
+    width: MASCOT_SIZE + 8,
+    height: MASCOT_SIZE + 8,
+    borderRadius: radii.lg,
+    backgroundColor: colors.stage,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  petCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  petName: {
+    ...typography.title,
+  },
+  chips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  trait: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+    backgroundColor: colors.primaryTint,
+  },
+  traitText: {
+    fontFamily: fonts.bold,
+    fontSize: 11,
+    lineHeight: 14,
+    color: colors.primary,
+  },
+  vetBox: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingVertical: 12,
+    padding: 12,
+    borderRadius: radii.md,
+    backgroundColor: colors.primaryTint,
+  },
+  vetOverline: {
+    ...typography.overline,
+    color: colors.primary,
+  },
+  vetWhen: {
+    fontFamily: fonts.bold,
+    fontSize: 12,
+    color: colors.ink,
+  },
+  iconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  petTabs: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  petTab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 9,
+    borderRadius: radii.full,
+    backgroundColor: colors.input,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+  },
+  petTabActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  petTabText: {
+    fontFamily: fonts.semibold,
+    fontSize: 12,
+    color: colors.slate,
+  },
+  petTabTextActive: {
+    fontFamily: fonts.bold,
+    color: colors.onPrimary,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+  },
+  infoValue: {
+    fontFamily: fonts.semibold,
+    fontSize: 12,
+    color: colors.slate,
+    flexShrink: 1,
+    textAlign: 'right',
   },
   rowDivider: {
     borderBottomWidth: 1,
     borderBottomColor: colors.divider,
   },
-  rowIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rowCopy: {
-    flex: 1,
-    gap: 2,
-  },
   rowLabel: {
     ...typography.label,
     fontSize: 14,
   },
-  rowTrailing: {
-    alignItems: 'flex-end',
-  },
-  rowValue: {
-    fontFamily: fonts.semibold,
-    fontSize: 13,
-    color: colors.slate,
-  },
-  achievementGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    rowGap: 12,
-  },
-  achievement: {
-    width: '48%',
-    gap: 6,
-    padding: 14,
-  },
-  achievementTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 2,
-  },
-  achievementIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.amberTint,
-  },
-  achievementIconEarned: {
-    backgroundColor: colors.stage,
-  },
-  achievementEmoji: {
-    fontSize: 20,
-  },
-  achievementTitle: {
-    ...typography.subhead,
-    fontSize: 14,
-  },
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+  guide: {
+    gap: 10,
   },
   chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: radii.full,
     backgroundColor: colors.card,
     borderWidth: 1.5,
@@ -498,14 +1014,84 @@ const styles = StyleSheet.create({
   chipText: {
     ...typography.label,
   },
-  logout: {
-    height: 52,
+  lunaCard: {
+    gap: 12,
+  },
+  lunaRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 14,
+  },
+  lunaAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: radii.md,
+    alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    borderRadius: radii.full,
+    backgroundColor: colors.amberTint,
+  },
+  lunaEmoji: {
+    fontSize: 32,
+  },
+  lunaName: {
+    ...typography.subhead,
+    fontSize: 17,
+  },
+  lunaDetails: {
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+  },
+  listCard: {
+    paddingVertical: 4,
+  },
+  teamRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+  },
+  spaAvatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     backgroundColor: colors.coralTint,
+  },
+  teamAction: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primaryTint,
+  },
+  accountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+  },
+  rowPressed: {
+    opacity: 0.7,
+  },
+  accountPanel: {
+    paddingLeft: 52,
+    paddingBottom: 8,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 8,
+  },
+  logout: {
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: radii.full,
   },
   logoutText: {
     fontFamily: fonts.bold,
@@ -515,7 +1101,7 @@ const styles = StyleSheet.create({
   version: {
     ...typography.bodySm,
     textAlign: 'center',
-    marginTop: -8,
+    marginTop: -14,
   },
   pressed: {
     opacity: 0.85,
