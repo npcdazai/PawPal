@@ -83,6 +83,14 @@ export interface MascotAnimations {
   opacity: Animated.Value;
 }
 
+export interface NavigateOptions {
+  /**
+   * For idempotent switches such as tabs: no anticipation hop, and it still
+   * navigates when Barnaby is already leaving.
+   */
+  quick?: boolean;
+}
+
 interface MachineEvents {
   onState: (state: MascotState) => void;
   onPlacement: (placement: MascotPlacement) => void;
@@ -191,14 +199,21 @@ export class MascotMachine {
     void this.refreshPlacement(request);
   };
 
-  /** STATE_EXIT: hop, turn, sprint off — and start the navigation as he sprints. */
-  navigate = (go: () => void, direction: Direction = 'forward') => {
-    if (this.leaving) return;
+  /**
+   * STATE_EXIT: hop, turn, sprint off. The navigation starts immediately, so
+   * the next screen never waits for Barnaby; he plays his exit over it.
+   */
+  navigate = (go: () => void, direction: Direction = 'forward', options: NavigateOptions = {}) => {
+    if (this.leaving) {
+      // Already on his way out: idempotent switches (tabs) still go; repeated pushes don't.
+      if (options.quick) go();
+      return;
+    }
     // This screen is going away: an arrival still being measured must not land on it.
     this.active = null;
     this.field = null;
     Keyboard.dismiss();
-    this.leave(direction, go);
+    this.leave(direction, go, options.quick);
   };
 
   /** STATE_WOOF_BARK: pets, treats and quick care actions. */
@@ -344,8 +359,11 @@ export class MascotMachine {
     });
   }
 
-  /** STATE_EXIT_TO_LEFT / _RIGHT: anticipation hop, turn, sprint off-screen. */
-  private leave(direction: Direction, onDepart?: () => void) {
+  /**
+   * STATE_EXIT_TO_LEFT / _RIGHT: anticipation hop, turn, sprint off-screen.
+   * `quick` skips the hop and sprints at once (tab switches).
+   */
+  private leave(direction: Direction, onDepart?: () => void, quick = false) {
     this.leaving = true;
     this.direction = direction;
     this.clearWoof();
@@ -362,6 +380,24 @@ export class MascotMachine {
     this.setState(toLeft ? 'STATE_EXIT_TO_LEFT' : 'STATE_EXIT_TO_RIGHT');
     const { travelX, facing, poseY, poseScale, poseRotate } = this.anim;
     const { anticipation } = PHYSICS;
+
+    const sprint = (duration: number) => {
+      facing.setValue(toLeft ? -1 : 1);
+      Animated.timing(travelX, {
+        toValue: this.offscreenX(placement, toLeft ? 'left' : 'right'),
+        duration,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: NATIVE_DRIVER,
+      }).start(() => this.finishLeave());
+    };
+
+    // The route changes now, while his exit animation runs on the native thread.
+    onDepart?.();
+
+    if (quick) {
+      sprint(PHYSICS.quickExitMs);
+      return;
+    }
 
     Animated.sequence([
       Animated.parallel([
@@ -395,17 +431,7 @@ export class MascotMachine {
           useNativeDriver: NATIVE_DRIVER,
         }),
       ]),
-    ]).start(() => {
-      facing.setValue(toLeft ? -1 : 1);
-      // The next screen slides in while Barnaby sprints out.
-      onDepart?.();
-      Animated.timing(travelX, {
-        toValue: this.offscreenX(placement, toLeft ? 'left' : 'right'),
-        duration: PHYSICS.exitMs,
-        easing: Easing.in(Easing.cubic),
-        useNativeDriver: NATIVE_DRIVER,
-      }).start(() => this.finishLeave());
-    });
+    ]).start(() => sprint(PHYSICS.exitMs));
   }
 
   private finishLeave() {

@@ -7,7 +7,7 @@
  *  - tabBar  → the shared bottom navigation bar used by every app screen
  *
  * Screens never hardcode paths: they call `useAppNavigation().go(flow)` or
- * `goToTab(tab)`, and the root layout builds the Stack and the tab bar from here.
+ * `goToTab(tab)`, and the layouts build the Stack, the Tabs and the tab bar from here.
  */
 
 /** How a flow changes the stack. */
@@ -17,21 +17,26 @@ export type NavAction =
   | 'back' //      pop back (falls back to replace when there is no history)
   | 'reset' //     make the screen the only one in the stack
   | 'dismissTo' // pop back to an existing screen
-  | 'stackOnRoot'; // pop to the root screen, then push (e.g. Dashboard → tracking)
+  | 'stackOnRoot' // pop to the root screen, then push (e.g. Dashboard → tracking)
+  | 'tab'; //       switch tabs in place (tab screens stay mounted)
 
 interface RouteConfig {
-  /** File name under src/app. */
+  /** File name under src/app (inside the group's layout folder, if it has one). */
   name: string;
   path: string;
   title: string;
-  /** For tab targets: 'root' screens are popped back to, 'push' screens are pushed. */
-  stack?: 'root' | 'push';
   gestureEnabled?: boolean;
 }
 
 interface GroupConfig {
   /** Show the common bottom navigation bar on every route in this group. */
   tabBar: boolean;
+  /**
+   * Folder under src/app whose navigator hosts these routes. '(tabs)' keeps
+   * every screen in the group mounted, so switching between them is instant.
+   * Omitted: the routes are pushed on the root stack.
+   */
+  layout?: string;
   routes: Record<string, RouteConfig>;
 }
 
@@ -65,37 +70,23 @@ export const NAVIGATION = {
         register: { name: 'register', path: '/register', title: 'Create account' },
       },
     },
+    // The tab screens: one tab navigator on the root stack, in tab-bar order.
     app: {
       tabBar: true,
+      layout: '(tabs)',
       routes: {
-        dashboard: {
-          name: 'dashboard',
-          path: '/dashboard',
-          title: 'Home',
-          stack: 'root',
-          gestureEnabled: false,
-        },
-        profile: { name: 'profile', path: '/profile', title: 'Profile', stack: 'push' },
+        dashboard: { name: 'dashboard', path: '/dashboard', title: 'Home' },
+        profile: { name: 'profile', path: '/profile', title: 'Profile' },
       },
     },
     // Full-screen task flows with their own bottom action bar.
     tasks: {
       tabBar: false,
       routes: {
-        walkConfig: { name: 'book-walk', path: '/book-walk', title: 'Book a Walk', stack: 'push' },
-        pickupLocation: {
-          name: 'pickup-location',
-          path: '/pickup-location',
-          title: 'Pickup Location',
-          stack: 'push',
-        },
-        walkerEnRoute: {
-          name: 'walk-tracking',
-          path: '/walk-tracking',
-          title: 'Live Walker Tracking',
-          stack: 'push',
-        },
-        liveWalk: { name: 'live-walk', path: '/live-walk', title: 'Live Walk', stack: 'push' },
+        walkConfig: { name: 'book-walk', path: '/book-walk', title: 'Book a Walk' },
+        pickupLocation: { name: 'pickup-location', path: '/pickup-location', title: 'Pickup Location' },
+        walkerEnRoute: { name: 'walk-tracking', path: '/walk-tracking', title: 'Live Walker Tracking' },
+        liveWalk: { name: 'live-walk', path: '/live-walk', title: 'Live Walk' },
       },
     },
   },
@@ -105,7 +96,7 @@ export const NAVIGATION = {
     register: { to: 'register', action: 'push' }, //         Login "Register now"
     signIn: { to: 'login', action: 'back' }, //              Register "Sign in"
     authenticated: { to: 'dashboard', action: 'reset' }, //  Log in / Create Account
-    closeProfile: { to: 'dashboard', action: 'back' }, //    Profile back arrow
+    closeProfile: { to: 'dashboard', action: 'tab' }, //     Profile back arrow
     signOut: { to: 'login', action: 'reset' }, //            Profile "Log out"
     bookWalk: { to: 'walkConfig', action: 'push' }, //       "Book a Dog Walker" / Log Walk / Rebook
     closeBooking: { to: 'dashboard', action: 'back' }, //    Book a Walk back arrow
@@ -149,6 +140,7 @@ export interface RouteEntry extends RouteConfig {
   key: RouteKey;
   group: GroupKey;
   tabBar: boolean;
+  layout?: string;
 }
 
 /** Every route, flattened, in declaration order. */
@@ -160,6 +152,7 @@ export const ROUTE_LIST: readonly RouteEntry[] = (Object.keys(NAVIGATION.groups)
       key: key as RouteKey,
       group,
       tabBar: config.tabBar,
+      layout: config.layout,
     }));
   }
 );
@@ -168,6 +161,21 @@ export const ROUTES = Object.fromEntries(ROUTE_LIST.map((route) => [route.key, r
   RouteKey,
   RouteEntry
 >;
+
+/** Screens hosted by the '(tabs)' navigator, in tab order. */
+export const TAB_ROUTES = ROUTE_LIST.filter((route) => route.layout === '(tabs)');
+
+type StackScreen = Pick<RouteConfig, 'name' | 'title' | 'gestureEnabled'>;
+
+/**
+ * Screens of the root stack: each route without a layout, plus one screen per
+ * layout folder (the tab navigator is the app's base, so it can't be swiped away).
+ */
+export const STACK_SCREENS: readonly StackScreen[] = ROUTE_LIST.flatMap((route, index): StackScreen[] => {
+  if (!route.layout) return [route];
+  const first = ROUTE_LIST.findIndex((other) => other.layout === route.layout) === index;
+  return first ? [{ name: route.layout, title: route.title, gestureEnabled: false }] : [];
+});
 
 export const TABS: readonly Tab[] = NAVIGATION.tabBar.tabs;
 

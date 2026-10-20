@@ -50,6 +50,8 @@ export const PHYSICS = {
   turnMs: 160,
   anticipation: { hopY: -12, scale: 1.05, upMs: 110, downMs: 90 },
   exitMs: 450,
+  /** Tab switches: straight into the sprint, no anticipation hop. */
+  quickExitMs: 280,
   edgePadding: 24,
   woof: { hopY: -14, scale: 1.08, upMs: 140, fps: 12 },
   pillMs: 800,

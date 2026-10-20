@@ -12,6 +12,7 @@ import {
   type AnchorRequest,
   type MascotAnimations,
   type MascotPlacement,
+  type NavigateOptions,
   type ViewHandle,
 } from './MascotMachine';
 import { type Direction, type FieldKind, type MascotState, PHYSICS } from './mascotModel';
@@ -22,8 +23,8 @@ export interface MascotActions {
   barkWith: (text: string) => void;
   focusField: (kind: FieldKind) => void;
   blurField: () => void;
-  /** Plays STATE_EXIT and calls `go` as Barnaby sprints off, so the next screen slides in with him. */
-  navigate: (go: () => void, direction?: Direction) => void;
+  /** Calls `go` right away and plays STATE_EXIT over the transition. */
+  navigate: (go: () => void, direction?: Direction, options?: NavigateOptions) => void;
   /** Register-screen readiness drives the tail wag from 8 fps up to 18 fps. */
   setWagFps: (fps: number) => void;
   setHapticsEnabled: (enabled: boolean) => void;
@@ -37,8 +38,8 @@ export interface MascotActions {
   face: (direction: 1 | -1) => void;
 }
 
+/** Slow-changing status for screens; Barnaby's FSM state lives in its own context. */
 export interface MascotStatus {
-  state: MascotState;
   /** Pets, treats and celebrations this session. */
   delight: number;
   hapticsEnabled: boolean;
@@ -68,6 +69,8 @@ export interface WoofPillData {
 
 const ActionsContext = createContext<MascotActions | null>(null);
 const StatusContext = createContext<MascotStatus | null>(null);
+// Changes several times per navigation, so only the few readers that show it subscribe.
+const StateContext = createContext<MascotState | null>(null);
 const AnchorContext = createContext<MascotAnchorApi | null>(null);
 const StageContext = createContext<MascotStageData | null>(null);
 
@@ -131,10 +134,7 @@ export function MascotProvider({ children }: { children: ReactNode }) {
     [machine]
   );
 
-  const status = useMemo<MascotStatus>(
-    () => ({ state, delight, hapticsEnabled }),
-    [state, delight, hapticsEnabled]
-  );
+  const status = useMemo<MascotStatus>(() => ({ delight, hapticsEnabled }), [delight, hapticsEnabled]);
 
   const stage = useMemo<MascotStageData>(
     () => ({
@@ -154,7 +154,9 @@ export function MascotProvider({ children }: { children: ReactNode }) {
     <ActionsContext.Provider value={actions}>
       <AnchorContext.Provider value={anchorApi}>
         <StatusContext.Provider value={status}>
-          <StageContext.Provider value={stage}>{children}</StageContext.Provider>
+          <StateContext.Provider value={state}>
+            <StageContext.Provider value={stage}>{children}</StageContext.Provider>
+          </StateContext.Provider>
         </StatusContext.Provider>
       </AnchorContext.Provider>
     </ActionsContext.Provider>
@@ -169,5 +171,6 @@ function useRequired<T>(context: React.Context<T | null>, hook: string): T {
 
 export const useMascotActions = () => useRequired(ActionsContext, 'useMascotActions');
 export const useMascotStatus = () => useRequired(StatusContext, 'useMascotStatus');
+export const useMascotState = () => useRequired(StateContext, 'useMascotState');
 export const useMascotAnchorApi = () => useRequired(AnchorContext, 'useMascotAnchorApi');
 export const useMascotStage = () => useRequired(StageContext, 'useMascotStage');

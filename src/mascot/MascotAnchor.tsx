@@ -174,11 +174,12 @@ export function MascotAnchor({
         timer = setTimeout(claimOnce, ms);
       };
 
+      // Stack transitions say whether the screen is closing; tab switches carry no data.
       const offStart = navigation.addListener('transitionStart', (event) => {
-        if (!event.data.closing) arm(TRANSITION_TIMEOUT_MS);
+        if (!event.data?.closing) arm(TRANSITION_TIMEOUT_MS);
       });
       const offEnd = navigation.addListener('transitionEnd', (event) => {
-        if (!event.data.closing) claimOnce();
+        if (!event.data?.closing) claimOnce();
       });
       arm(SETTLE_FALLBACK_MS);
 

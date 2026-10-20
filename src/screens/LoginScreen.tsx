@@ -9,7 +9,7 @@ import { FormField } from '../components/FormField';
 import { PrimaryButton, SecondaryButton } from '../components/Button';
 import { Toast, useToast } from '../components/Toast';
 import { MascotAnchor, MascotScrollView } from '../mascot/MascotAnchor';
-import { useMascotActions, useMascotStatus } from '../mascot/MascotProvider';
+import { useMascotActions, useMascotState } from '../mascot/MascotProvider';
 import type { ViewHandle } from '../mascot/MascotMachine';
 import type { MascotState } from '../mascot/mascotModel';
 import { useAppNavigation } from '../navigation/useAppNavigation';
@@ -32,7 +32,7 @@ const STATUS_COPY: Partial<Record<MascotState, string>> = {
 export function LoginScreen() {
   const { go } = useAppNavigation();
   const { focusField, blurField } = useMascotActions();
-  const { state } = useMascotStatus();
+  const state = useMascotState();
   const { message, show } = useToast();
   const cardRef = useRef<ViewHandle>(null);
 

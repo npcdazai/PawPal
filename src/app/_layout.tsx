@@ -14,14 +14,15 @@ import { BookingsProvider } from '../booking/BookingsProvider';
 import { MascotProvider } from '../mascot/MascotProvider';
 import { MascotStage } from '../mascot/MascotStage';
 import { AppTabBar } from '../navigation/AppTabBar';
-import { ROUTE_LIST } from '../navigation/navigation';
+import { STACK_SCREENS } from '../navigation/navigation';
 import { colors } from '../theme/colors';
 
 /**
  * Layer 0 is the navigation stack (horizontal slides between screens), built
- * from the NAVIGATION config. Layer 1 is the persistent mascot stage drawn
- * above it, so Barnaby is one living companion who walks between screens.
- * The common tab bar sits on top of both and stays put while screens slide.
+ * from the NAVIGATION config; Home and Profile sit in one '(tabs)' screen of it.
+ * Layer 1 is the persistent mascot stage drawn above it, so Barnaby is one
+ * living companion who walks between screens. The common tab bar sits on top
+ * of both and stays put while screens slide.
  */
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -52,11 +53,11 @@ export default function RootLayout() {
               contentStyle: { backgroundColor: colors.canvas },
             }}
           >
-            {ROUTE_LIST.map((route) => (
+            {STACK_SCREENS.map((screen) => (
               <Stack.Screen
-                key={route.key}
-                name={route.name}
-                options={{ title: route.title, gestureEnabled: route.gestureEnabled ?? true }}
+                key={screen.name}
+                name={screen.name}
+                options={{ title: screen.title, gestureEnabled: screen.gestureEnabled ?? true }}
               />
             ))}
           </Stack>
