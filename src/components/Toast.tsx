@@ -3,7 +3,7 @@ import { Animated, StyleSheet, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts } from '../theme/typography';
-import { NATIVE_DRIVER } from '../mascot/MascotMachine';
+import { NATIVE_DRIVER } from '../theme/motion';
 
 /** Transient message state for <Toast />. */
 export function useToast(durationMs = 2200) {

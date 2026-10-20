@@ -5,7 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts } from '../theme/typography';
 import { useReducedMotion } from '../hooks/useReducedMotion';
-import { NATIVE_DRIVER, type ViewHandle } from '../mascot/MascotMachine';
+import { NATIVE_DRIVER, type ViewHandle } from '../theme/motion';
 import { Icon } from './Icon';
 
 /** Height of the floating bar, for content padding underneath it. */

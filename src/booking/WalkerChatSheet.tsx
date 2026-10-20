@@ -5,7 +5,7 @@ import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
 import { Icon } from '../components/Icon';
 import { Avatar } from '../components/Avatar';
-import { NATIVE_DRIVER } from '../mascot/MascotMachine';
+import { NATIVE_DRIVER } from '../theme/motion';
 import type { Walker } from '../data/careTeam';
 
 interface ChatMessage {

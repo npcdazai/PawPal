@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
@@ -8,13 +8,11 @@ import { Badge } from '../components/Badge';
 import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/Button';
 import { ProgressBar } from '../components/ProgressBar';
-import { MascotAnchor, MascotScrollView } from '../mascot/MascotAnchor';
+import { MascotDockSlot } from '../mascot/MascotDockSlot';
 import { useMascotActions } from '../mascot/MascotProvider';
-import type { ViewHandle } from '../mascot/MascotMachine';
 import { PHYSICS } from '../mascot/mascotModel';
 import { useAppNavigation } from '../navigation/useAppNavigation';
 
-const MASCOT_SIZE = 150;
 const EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
 
 const READINESS_COPY = [
@@ -28,7 +26,6 @@ const READINESS_COPY = [
 export function RegisterScreen() {
   const { go } = useAppNavigation();
   const { focusField, blurField, setWagFps } = useMascotActions();
-  const readinessRef = useRef<ViewHandle>(null);
 
   const [ownerName, setOwnerName] = useState('');
   const [petName, setPetName] = useState('');
@@ -56,7 +53,7 @@ export function RegisterScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <MascotScrollView
+      <ScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets
@@ -68,9 +65,9 @@ export function RegisterScreen() {
             <Badge label="Playful Pup 🍊" tone="amber" />
           </View>
 
-          <MascotAnchor id="register" size={MASCOT_SIZE} clipRef={readinessRef} />
+          <MascotDockSlot variant="auth-header" />
 
-          <View ref={readinessRef} style={styles.readiness}>
+          <View style={styles.readiness}>
             <View style={styles.readinessHeader}>
               <View style={styles.readinessTitle}>
                 <Icon name="auto-awesome" size={16} color={colors.primary} />
@@ -165,7 +162,7 @@ export function RegisterScreen() {
             <Text style={styles.footerLink}>Sign in</Text>
           </Pressable>
         </View>
-      </MascotScrollView>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -195,7 +192,7 @@ const styles = StyleSheet.create({
   },
   readiness: {
     alignSelf: 'stretch',
-    marginTop: -18,
+    marginTop: 10,
     padding: 14,
     gap: 8,
     borderRadius: radii.lg,

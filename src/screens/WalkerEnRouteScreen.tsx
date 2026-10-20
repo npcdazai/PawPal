@@ -21,9 +21,9 @@ import { Badge } from '../components/Badge';
 import { PrimaryButton } from '../components/Button';
 import { ActionSheet } from '../components/ActionSheet';
 import { Toast, useToast } from '../components/Toast';
-import { MascotAnchor, MascotFrame } from '../mascot/MascotAnchor';
+import { MascotDockSlot } from '../mascot/MascotDockSlot';
 import { useMascotActions } from '../mascot/MascotProvider';
-import { NATIVE_DRIVER } from '../mascot/MascotMachine';
+import { NATIVE_DRIVER } from '../theme/motion';
 import { useAppNavigation } from '../navigation/useAppNavigation';
 import { useBookings, useTrackedWalk } from '../booking/BookingsProvider';
 import { NeighborhoodMap } from '../booking/NeighborhoodMap';
@@ -35,8 +35,8 @@ import { PICKUP_ROUTE, routeCenter, routeOffset, splitRoute, toSvgPath } from '.
 import { MAP_SIZE } from '../booking/pickupPlaces';
 import { WALKERS } from '../data/careTeam';
 
-const HOME_PIN = 84;
-const HOME_MASCOT = 68;
+/** The map-pin slot at Home. */
+const HOME_PIN = 68;
 const WALKER_PIN = 54;
 const START_DELAY_MS = 750;
 const MONO = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' });
@@ -128,7 +128,7 @@ export function WalkerEnRouteScreen() {
           pan.setValue({ x: width / 2 - center.x, y: height / 2 - center.y + 20 });
         }}
       >
-        <MascotFrame style={StyleSheet.absoluteFill}>
+        <View style={StyleSheet.absoluteFill}>
           <NeighborhoodMap pan={pan} showWalkers={false}>
             <Svg pointerEvents="none" style={styles.layer} width={MAP_SIZE.width} height={MAP_SIZE.height}>
               <Path
@@ -144,17 +144,15 @@ export function WalkerEnRouteScreen() {
 
             {/* Pickup pin: Barnaby waits here with his leash */}
             <View
-              pointerEvents="none"
+              pointerEvents="box-none"
               style={[
                 styles.homePin,
                 { left: home.x - HOME_PIN / 2, top: home.y - HOME_PIN / 2 },
               ]}
             >
               <PulseRings size={HOME_PIN} colors={[colors.coral, colors.coral]} scaleTo={1.7} />
-              <View style={styles.homeCircle}>
-                <MascotAnchor id="walkerEnRoute" size={HOME_MASCOT} />
-              </View>
-              <View style={styles.pickupTag}>
+              <MascotDockSlot variant="map-pin" style={styles.homeShadow} />
+              <View pointerEvents="none" style={styles.pickupTag}>
                 <Icon name="home" size={13} color={colors.onPrimary} />
                 <Text style={styles.pickupText}>Pickup</Text>
               </View>
@@ -192,7 +190,7 @@ export function WalkerEnRouteScreen() {
               </View>
             </Animated.View>
           </NeighborhoodMap>
-        </MascotFrame>
+        </View>
 
         <View style={styles.etaRow} pointerEvents="none">
           <MapPill>
@@ -381,15 +379,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  homeCircle: {
-    width: HOME_PIN,
-    height: HOME_PIN,
+  homeShadow: {
     borderRadius: HOME_PIN / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.stage,
-    borderWidth: 4,
-    borderColor: colors.card,
     ...shadows.float,
   },
   pickupTag: {

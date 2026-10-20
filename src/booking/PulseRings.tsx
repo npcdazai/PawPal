@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
-import { NATIVE_DRIVER } from '../mascot/MascotMachine';
+import { NATIVE_DRIVER } from '../theme/motion';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 
 interface PulseRingsProps {

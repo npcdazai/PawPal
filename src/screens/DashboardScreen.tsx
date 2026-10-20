@@ -12,17 +12,14 @@ import { Toast, useToast } from '../components/Toast';
 import { BOTTOM_NAV_HEIGHT } from '../components/BottomNavigation';
 import { DASHBOARD_SECTIONS, type DashboardSection } from '../navigation/navigation';
 import { useAppNavigation } from '../navigation/useAppNavigation';
-import { MascotAnchor, MascotScrollView } from '../mascot/MascotAnchor';
+import { MascotDockSlot } from '../mascot/MascotDockSlot';
 import { useMascotActions } from '../mascot/MascotProvider';
-import { DOCK_SCALE, MASCOT_BASE_SIZE } from '../mascot/mascotModel';
 import { Avatar } from '../components/Avatar';
 import { useBookings, type WalkBooking, type WalkStatus } from '../booking/BookingsProvider';
 import { formatMoney } from '../booking/walkPlans';
 import { PICKUP_PLACES } from '../booking/pickupPlaces';
 import { WALKERS, WALKER_IDS, type WalkerId } from '../data/careTeam';
 
-const DOCK_SIZE = Math.round(MASCOT_BASE_SIZE * DOCK_SCALE);
-const DOCK_BADGE = DOCK_SIZE + 12;
 const WALK_GOAL_KM = 4;
 const TODAY_WALK_KM = 3.2;
 const KCAL_PER_KM = 65.6;
@@ -200,8 +197,8 @@ export function DashboardScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <MascotScrollView
-        scrollRef={scrollRef}
+      <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
@@ -237,9 +234,7 @@ export function DashboardScreen() {
               </Text>
             </View>
             <View style={styles.dock}>
-              <View style={styles.dockCircle}>
-                <MascotAnchor id="dashboard" size={DOCK_SIZE} />
-              </View>
+              <MascotDockSlot variant="dashboard-dock" />
               <Pressable onPress={bark} accessibilityRole="button" hitSlop={6}>
                 <Text style={styles.dockLabel}>TAP TO PET</Text>
               </Pressable>
@@ -397,7 +392,7 @@ export function DashboardScreen() {
             ))}
           </View>
         </View>
-      </MascotScrollView>
+      </ScrollView>
 
       <Toast message={message} bottomOffset={BOTTOM_NAV_HEIGHT + 28} />
     </SafeAreaView>
@@ -606,16 +601,6 @@ const styles = StyleSheet.create({
   dock: {
     alignItems: 'center',
     gap: 6,
-  },
-  dockCircle: {
-    width: DOCK_BADGE,
-    height: DOCK_BADGE,
-    borderRadius: DOCK_BADGE / 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.75)',
-    borderWidth: 2,
-    borderColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   dockLabel: {
     fontFamily: fonts.extrabold,

@@ -19,9 +19,9 @@ import { Icon } from '../components/Icon';
 import { Avatar } from '../components/Avatar';
 import { ActionSheet } from '../components/ActionSheet';
 import { Toast, useToast } from '../components/Toast';
-import { MascotAnchor, MascotFrame } from '../mascot/MascotAnchor';
+import { MascotDockSlot } from '../mascot/MascotDockSlot';
 import { useMascotActions } from '../mascot/MascotProvider';
-import { NATIVE_DRIVER } from '../mascot/MascotMachine';
+import { NATIVE_DRIVER } from '../theme/motion';
 import { useAppNavigation } from '../navigation/useAppNavigation';
 import { useBookings, useTrackedWalk } from '../booking/BookingsProvider';
 import { NeighborhoodMap } from '../booking/NeighborhoodMap';
@@ -44,8 +44,8 @@ import { WALKERS } from '../data/careTeam';
 const CORGI = require('../../assets/corgi_mascot.png');
 const PARK_PHOTO = require('../../assets/corgi_dashboard.png');
 
-const PIN = 84;
-const PIN_MASCOT = 66;
+/** The map-pin slot. */
+const PIN = 68;
 const MILESTONE = 34;
 const TICK_MS = 250;
 const COMPLETE_DELAY_MS = 650;
@@ -204,7 +204,7 @@ export function LiveWalkScreen() {
           pan.setValue({ x: width / 2 - PARK_LOOP_FOCUS.x, y: height / 2 - PARK_LOOP_FOCUS.y });
         }}
       >
-        <MascotFrame style={StyleSheet.absoluteFill}>
+        <View style={StyleSheet.absoluteFill}>
           <NeighborhoodMap pan={pan} showWalkers={false}>
             <Svg pointerEvents="none" style={styles.layer} width={MAP_SIZE.width} height={MAP_SIZE.height}>
               <Path
@@ -267,12 +267,9 @@ export function LiveWalkScreen() {
               );
             })}
 
-            {/* Barnaby's anchor stays at Home; his pin and stage follow the same route offset. */}
-            <View pointerEvents="none" style={[styles.pinSlot, { left: home.x - PIN / 2, top: home.y - PIN / 2 }]}>
-              <MascotAnchor id="liveWalk" size={PIN_MASCOT} offset={offset} active={!completed} />
-            </View>
+            {/* Barnaby's map-pin slot travels the route with the pin, so he can't drift off it. */}
             <Animated.View
-              pointerEvents="none"
+              pointerEvents="box-none"
               style={[
                 styles.pinSlot,
                 {
@@ -283,7 +280,7 @@ export function LiveWalkScreen() {
               ]}
             >
               <PulseRings size={PIN} colors={[colors.primary, colors.primary]} scaleTo={1.6} />
-              <View style={styles.pinCircle} />
+              <MascotDockSlot variant="map-pin" active={!completed} style={styles.pinShadow} />
               <Avatar
                 initials={walker.initials}
                 tint={colors.card}
@@ -291,7 +288,7 @@ export function LiveWalkScreen() {
                 size={30}
                 style={styles.walkerBadge}
               />
-              <View style={styles.pinLabelSlot}>
+              <View pointerEvents="none" style={styles.pinLabelSlot}>
                 <View style={styles.pinLabel}>
                   <Text style={styles.pinLabelText} numberOfLines={1}>
                     Barnaby <Text style={styles.pinStar}>★</Text> with {walker.shortName}
@@ -300,7 +297,7 @@ export function LiveWalkScreen() {
               </View>
             </Animated.View>
           </NeighborhoodMap>
-        </MascotFrame>
+        </View>
 
         <View style={styles.liveRow} pointerEvents="none">
           <MapPill style={styles.livePill}>
@@ -629,14 +626,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pinCircle: {
-    position: 'absolute',
-    width: PIN,
-    height: PIN,
+  pinShadow: {
     borderRadius: PIN / 2,
-    backgroundColor: colors.stage,
-    borderWidth: 4,
-    borderColor: colors.card,
     ...shadows.float,
   },
   walkerBadge: {

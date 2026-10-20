@@ -7,7 +7,7 @@ import { fonts, typography } from '../theme/typography';
 import { Icon } from '../components/Icon';
 import { Badge } from '../components/Badge';
 import { PrimaryButton } from '../components/Button';
-import { MascotAnchor, MascotScrollView } from '../mascot/MascotAnchor';
+import { MascotDockSlot } from '../mascot/MascotDockSlot';
 import { useMascotActions } from '../mascot/MascotProvider';
 import { PHYSICS } from '../mascot/mascotModel';
 import { useAppNavigation } from '../navigation/useAppNavigation';
@@ -24,7 +24,6 @@ import {
 } from '../booking/walkPlans';
 import { isWalkerId } from '../data/careTeam';
 
-const MASCOT_SIZE = 150;
 const FOOTER_HEIGHT = 196;
 
 const INCLUSIONS = [
@@ -100,7 +99,7 @@ export function WalkConfigScreen() {
         </View>
       </View>
 
-      <MascotScrollView
+      <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: FOOTER_HEIGHT + insets.bottom + 16 }]}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets
@@ -114,7 +113,7 @@ export function WalkConfigScreen() {
             <View style={styles.readyDot} />
             <Text style={styles.readyText}>BARNABY IS READY TO GO!</Text>
           </View>
-          <MascotAnchor id="walkConfig" size={MASCOT_SIZE} />
+          <MascotDockSlot variant="auth-header" />
           <View style={styles.petRow}>
             <Text style={styles.petName}>Barnaby</Text>
             <Badge label="Pembroke Corgi • 2y" tone="white" />
@@ -269,7 +268,7 @@ export function WalkConfigScreen() {
             <Text style={styles.editText}>{editingNotes ? 'Done' : 'Edit'}</Text>
           </Pressable>
         </View>
-      </MascotScrollView>
+      </ScrollView>
 
       {/* Sticky fare bar */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
@@ -390,6 +389,7 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingTop: 16,
     paddingBottom: 18,
+    paddingHorizontal: 16,
     borderRadius: radii.xl,
     backgroundColor: colors.stage,
     overflow: 'hidden',

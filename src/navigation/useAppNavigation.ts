@@ -84,7 +84,7 @@ export function useAppNavigation() {
           }
         },
         backwards ? 'back' : 'forward',
-        { quick: action === 'tab' }
+        { inPlace: action === 'tab' }
       );
     },
     [currentRoute, navigate, router]

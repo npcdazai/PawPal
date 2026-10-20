@@ -1,83 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Image, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts } from '../theme/typography';
-import { NATIVE_DRIVER, type MascotAnimations } from './MascotMachine';
-import {
-  CLIPS,
-  MASCOT_BASE_SIZE,
-  PHYSICS,
-  SPRITE_FRAME_COUNT,
-  type SpriteClip,
-  type SpriteClipName,
-} from './mascotModel';
+import { NATIVE_DRIVER } from '../theme/motion';
+import { CLIPS, PHYSICS, SPRITE_FRAME_COUNT, type SpriteClip, type SpriteClipName } from './mascotModel';
 
 const CORGI = require('../../assets/corgi_mascot.png');
 
-interface BarnabyMascotProps {
-  size: number;
-  clip: SpriteClipName;
-  fps: number;
-  anim: Pick<MascotAnimations, 'poseY' | 'poseScale' | 'poseRotate' | 'facing'>;
-  onPress?: () => void;
-}
-
 /**
- * The corgi himself. Two transform layers:
- *  - pose layer (native driver): state poses — hop, tilt, duck, facing flip
- *  - frame layer (React state at `fps`): the discrete 6-frame sprite clip
+ * The corgi artwork playing a 6-frame sprite clip at `fps` (the wag and the
+ * bob). Lives inside the character rig, so frames move him around his own
+ * 0,0 and never his place on screen.
  */
-export function BarnabyMascot({ size, clip, fps, anim, onPress }: BarnabyMascotProps) {
-  const rotate = useMemo(
-    () =>
-      anim.poseRotate.interpolate({
-        inputRange: [-360, 360],
-        outputRange: ['-360deg', '360deg'],
-      }),
-    [anim.poseRotate]
-  );
-
-  return (
-    <View style={{ width: size, height: size }}>
-      <View
-        pointerEvents="none"
-        style={[
-          styles.groundShadow,
-          {
-            width: size * 0.36,
-            height: size * 0.05,
-            left: size * 0.37,
-            top: size * 0.845,
-          },
-        ]}
-      />
-      <Animated.View
-        style={[
-          StyleSheet.absoluteFill,
-          {
-            transformOrigin: 'bottom',
-            transform: [
-              { translateY: anim.poseY },
-              { rotate },
-              { scale: anim.poseScale },
-              { scaleX: anim.facing },
-            ],
-          },
-        ]}
-      >
-        <Pressable
-          onPress={onPress}
-          accessibilityRole="button"
-          accessibilityLabel="Barnaby the corgi"
-          accessibilityHint="Pets Barnaby"
-          style={StyleSheet.absoluteFill}
-        >
-          <SpriteFrames key={clip} clip={CLIPS[clip]} fps={fps} size={size} />
-        </Pressable>
-      </Animated.View>
-    </View>
-  );
+export function CorgiSprite({ clip, fps, size }: { clip: SpriteClipName; fps: number; size: number }) {
+  return <SpriteFrames key={clip} clip={CLIPS[clip]} fps={fps} size={size} />;
 }
 
 function SpriteFrames({ clip, fps, size }: { clip: SpriteClip; fps: number; size: number }) {
@@ -87,34 +24,42 @@ function SpriteFrames({ clip, fps, size }: { clip: SpriteClip; fps: number; size
     if (fps <= 0) return undefined;
     const timer = setInterval(() => {
       setFrame((current) =>
-        clip.loop
-          ? (current + 1) % SPRITE_FRAME_COUNT
-          : Math.min(current + 1, SPRITE_FRAME_COUNT - 1)
+        clip.loop ? (current + 1) % SPRITE_FRAME_COUNT : Math.min(current + 1, SPRITE_FRAME_COUNT - 1)
       );
     }, 1000 / fps);
     return () => clearInterval(timer);
   }, [clip, fps]);
 
   const pose = clip.frames[frame];
-  const unit = size / MASCOT_BASE_SIZE;
 
   return (
     <View
       style={{
         width: size,
         height: size,
-        transformOrigin: 'bottom',
-        transform: [
-          { translateY: pose.translateY * unit },
-          { rotate: `${pose.rotate}deg` },
-          { scaleX: pose.scaleX },
-          { scaleY: pose.scaleY },
-        ],
+        transformOrigin: 'center bottom',
+        transform: [{ translateY: pose.translateY }, { rotate: `${pose.rotate}deg` }],
       }}
     >
       <Image source={CORGI} style={{ width: size, height: size }} resizeMode="contain" />
       <SpriteAccents clip={clip.name} frame={frame} />
     </View>
+  );
+}
+
+/**
+ * Soft contact shadow under his paws, placed in a size×size box shared with
+ * the rig. It travels with him but never bobs or tilts.
+ */
+export function GroundShadow({ size }: { size: number }) {
+  return (
+    <View
+      pointerEvents="none"
+      style={[
+        styles.groundShadow,
+        { width: size * 0.36, height: size * 0.05, left: size * 0.37, top: size * 0.845 },
+      ]}
+    />
   );
 }
 
@@ -163,24 +108,9 @@ function SpriteAccents({ clip, frame }: { clip: SpriteClipName; frame: number })
   if (s === 0) return null;
   return (
     <Svg pointerEvents="none" style={StyleSheet.absoluteFill} viewBox="0 0 512 512">
-      <Path
-        d={`M408 214 L${408 + 34 * s} ${214 - 20 * s}`}
-        stroke={colors.coral}
-        strokeWidth={10}
-        strokeLinecap="round"
-      />
-      <Path
-        d={`M414 252 L${414 + 40 * s} 252`}
-        stroke={colors.coral}
-        strokeWidth={10}
-        strokeLinecap="round"
-      />
-      <Path
-        d={`M408 290 L${408 + 34 * s} ${290 + 20 * s}`}
-        stroke={colors.coral}
-        strokeWidth={10}
-        strokeLinecap="round"
-      />
+      <Path d={`M408 214 L${408 + 34 * s} ${214 - 20 * s}`} stroke={colors.coral} strokeWidth={10} strokeLinecap="round" />
+      <Path d={`M414 252 L${414 + 40 * s} 252`} stroke={colors.coral} strokeWidth={10} strokeLinecap="round" />
+      <Path d={`M408 290 L${408 + 34 * s} ${290 + 20 * s}`} stroke={colors.coral} strokeWidth={10} strokeLinecap="round" />
     </Svg>
   );
 }

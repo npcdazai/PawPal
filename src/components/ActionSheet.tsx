@@ -3,7 +3,7 @@ import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-nativ
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
-import { NATIVE_DRIVER } from '../mascot/MascotMachine';
+import { NATIVE_DRIVER } from '../theme/motion';
 import { Icon } from './Icon';
 
 export interface ActionSheetOption {

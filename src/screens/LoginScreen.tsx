@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
@@ -8,25 +8,21 @@ import { Badge } from '../components/Badge';
 import { FormField } from '../components/FormField';
 import { PrimaryButton, SecondaryButton } from '../components/Button';
 import { Toast, useToast } from '../components/Toast';
-import { MascotAnchor, MascotScrollView } from '../mascot/MascotAnchor';
+import { MascotDockSlot } from '../mascot/MascotDockSlot';
 import { useMascotActions, useMascotState } from '../mascot/MascotProvider';
-import type { ViewHandle } from '../mascot/MascotMachine';
 import type { MascotState } from '../mascot/mascotModel';
 import { useAppNavigation } from '../navigation/useAppNavigation';
 
-const MASCOT_SIZE = 168;
-/** The card rises over the header so its top edge meets Barnaby's paws. */
+/** The card rises over the header's bottom padding, never over Barnaby's slot. */
 const CARD_OVERLAP = 44;
-const HEADER_BOTTOM_PAD = 26;
+const HEADER_BOTTOM_PAD = CARD_OVERLAP + 12;
 
 const STATUS_COPY: Partial<Record<MascotState, string>> = {
   STATE_ENTER_FROM_RIGHT: 'Barnaby is trotting over',
-  STATE_ENTER_FROM_LEFT: 'Barnaby is trotting over',
   STATE_CURIOUS_TILT: 'Barnaby is curious',
   STATE_PEEKING_DUCK: 'Barnaby is not peeking',
   STATE_WOOF_BARK: 'Barnaby says woof',
   STATE_EXIT_TO_LEFT: 'Barnaby is zooming ahead',
-  STATE_EXIT_TO_RIGHT: 'Barnaby is zooming ahead',
 };
 
 export function LoginScreen() {
@@ -34,7 +30,6 @@ export function LoginScreen() {
   const { focusField, blurField } = useMascotActions();
   const state = useMascotState();
   const { message, show } = useToast();
-  const cardRef = useRef<ViewHandle>(null);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -45,7 +40,7 @@ export function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <MascotScrollView
+      <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
@@ -60,10 +55,11 @@ export function LoginScreen() {
             uppercase
             style={styles.statusPill}
           />
-          <MascotAnchor id="login" size={MASCOT_SIZE} clipRef={cardRef} />
+          {/* Ducking for the password lowers him behind the slot's bottom edge. */}
+          <MascotDockSlot variant="auth-header" />
         </View>
 
-        <View ref={cardRef} style={styles.card}>
+        <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Text style={styles.title}>Welcome back!</Text>
             <Text style={styles.subtitle}>
@@ -161,7 +157,7 @@ export function LoginScreen() {
             </Pressable>
           </View>
         </View>
-      </MascotScrollView>
+      </ScrollView>
       <Toast message={message} />
     </SafeAreaView>
   );
@@ -182,6 +178,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     paddingTop: 14,
+    paddingHorizontal: 16,
     paddingBottom: HEADER_BOTTOM_PAD,
     backgroundColor: colors.stage,
     borderBottomLeftRadius: 40,

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Animated, StyleSheet } from 'react-native';
 import { useGlobalSearchParams, usePathname } from 'expo-router';
 import { BottomNavigation } from '../components/BottomNavigation';
-import { NATIVE_DRIVER } from '../mascot/MascotMachine';
+import { NATIVE_DRIVER } from '../theme/motion';
 import { useMascotStatus } from '../mascot/MascotProvider';
 import { TABS, activeTabFor, routeForPath, type TabKey } from './navigation';
 import { useAppNavigation } from './useAppNavigation';
@@ -71,7 +71,7 @@ function SlideIn({ visible, children }: { visible: boolean; children: React.Reac
 const styles = StyleSheet.create({
   layer: {
     ...StyleSheet.absoluteFill,
-    // Above the mascot stage (50) so Barnaby never covers the tabs.
+    // Above the navigation stack's screens.
     zIndex: 60,
   },
 });

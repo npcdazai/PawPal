@@ -5,9 +5,9 @@ import { fonts, typography } from '../theme/typography';
 import { Icon } from '../components/Icon';
 import { Avatar } from '../components/Avatar';
 import { PrimaryButton } from '../components/Button';
-import { MascotAnchor, MascotFrame } from '../mascot/MascotAnchor';
+import { MascotDockSlot } from '../mascot/MascotDockSlot';
 import { useMascotActions } from '../mascot/MascotProvider';
-import { NATIVE_DRIVER } from '../mascot/MascotMachine';
+import { NATIVE_DRIVER } from '../theme/motion';
 import { WALKERS, type WalkerId } from '../data/careTeam';
 import { PulseRings } from './PulseRings';
 import { formatMoney, type WalkMinutes, type WalkTiming } from './walkPlans';
@@ -53,7 +53,6 @@ export function FindingWalkersModal({
   const { height: windowHeight } = useWindowDimensions();
   const compact = windowHeight < COMPACT_HEIGHT;
   const radarSize = compact ? 118 : 150;
-  const mascotSize = compact ? 92 : 116;
   const [phase, setPhase] = useState<'searching' | 'matched'>('searching');
   const [percent, setPercent] = useState(0);
   const [progress] = useState(() => new Animated.Value(0));
@@ -122,7 +121,7 @@ export function FindingWalkersModal({
             },
           ]}
         >
-          <MascotFrame style={[styles.dialogContent, compact && styles.dialogContentCompact]}>
+          <View style={[styles.dialogContent, compact && styles.dialogContentCompact]}>
             <View style={styles.livePill}>
               <View style={[styles.liveDot, matched && styles.liveDotDone]} />
               <Text style={styles.liveText}>{matched ? 'WALKER LOCKED IN' : 'LIVE SEARCH RADIUS'}</Text>
@@ -143,7 +142,7 @@ export function FindingWalkersModal({
                   matched && styles.radarCoreDone,
                 ]}
               >
-                <MascotAnchor id="findingWalkers" size={mascotSize} />
+                <MascotDockSlot variant="popup" diameter={radarSize} />
               </View>
               <View style={styles.pawBadge}>
                 <Icon name="pets" size={16} color={colors.coral} />
@@ -230,7 +229,7 @@ export function FindingWalkersModal({
               <Icon name="verified-user" size={14} color={colors.successInk} />
               <Text style={styles.meta}>100% PawPal Certified & GPS Insured</Text>
             </View>
-          </MascotFrame>
+          </View>
         </Animated.View>
       </View>
     </View>

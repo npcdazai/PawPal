@@ -1,5 +1,5 @@
 import React, { useState, type ReactNode } from 'react';
-import { LayoutAnimation, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { LayoutAnimation, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
@@ -9,13 +9,12 @@ import { Avatar } from '../components/Avatar';
 import { Toggle } from '../components/Toggle';
 import { Toast, useToast } from '../components/Toast';
 import { BOTTOM_NAV_HEIGHT } from '../components/BottomNavigation';
-import { MascotAnchor, MascotScrollView } from '../mascot/MascotAnchor';
+import { MascotDockSlot } from '../mascot/MascotDockSlot';
 import { useMascotActions, useMascotStatus } from '../mascot/MascotProvider';
 import { useAppNavigation } from '../navigation/useAppNavigation';
 import { useBookings } from '../booking/BookingsProvider';
 import { WALKERS, type WalkerId } from '../data/careTeam';
 
-const MASCOT_SIZE = 100;
 const BASE_WALKS = 28;
 
 type PetTab = 'passport' | 'diet' | 'guide';
@@ -68,7 +67,7 @@ export function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <MascotScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.topBar}>
           <Pressable
             onPress={() => go('closeProfile')}
@@ -179,9 +178,7 @@ export function ProfileScreen() {
           <View style={[styles.card, styles.petCard]}>
             <View style={styles.petAccent} />
             <View style={styles.petRow}>
-              <View style={styles.petStage}>
-                <MascotAnchor id="profile" size={MASCOT_SIZE} />
-              </View>
+              <MascotDockSlot variant="pet-portrait" />
               <View style={styles.petCopy}>
                 <Text style={styles.petName}>Barnaby</Text>
                 <Badge label="Primary Companion" tone="coral" />
@@ -430,7 +427,7 @@ export function ProfileScreen() {
           <Text style={styles.logoutText}>Log Out of PawPal</Text>
         </Pressable>
         <Text style={styles.version}>PawPal App v3.4.2 · Made with 🐾 for Barnaby & Luna</Text>
-      </MascotScrollView>
+      </ScrollView>
 
       <Toast message={message} bottomOffset={BOTTOM_NAV_HEIGHT + 28} />
     </SafeAreaView>
@@ -889,14 +886,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-  },
-  petStage: {
-    width: MASCOT_SIZE + 8,
-    height: MASCOT_SIZE + 8,
-    borderRadius: radii.lg,
-    backgroundColor: colors.stage,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   petCopy: {
     flex: 1,

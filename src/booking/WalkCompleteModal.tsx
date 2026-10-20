@@ -4,8 +4,8 @@ import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
 import { Icon } from '../components/Icon';
 import { PrimaryButton } from '../components/Button';
-import { MascotAnchor, MascotFrame } from '../mascot/MascotAnchor';
-import { NATIVE_DRIVER } from '../mascot/MascotMachine';
+import { MascotDockSlot } from '../mascot/MascotDockSlot';
+import { NATIVE_DRIVER } from '../theme/motion';
 import type { Walker } from '../data/careTeam';
 import { formatMoney } from './walkPlans';
 
@@ -26,7 +26,6 @@ export function WalkCompleteModal({ walker, minutesWalked, km, kcal, fare, onDon
   const { height: windowHeight } = useWindowDimensions();
   const compact = windowHeight < COMPACT_HEIGHT;
   const badgeSize = compact ? 116 : 140;
-  const mascotSize = compact ? 92 : 112;
   const [enter] = useState(() => new Animated.Value(0));
   const [rating, setRating] = useState(5);
   const [tip, setTip] = useState<number>(5);
@@ -56,9 +55,9 @@ export function WalkCompleteModal({ walker, minutesWalked, km, kcal, fare, onDon
             },
           ]}
         >
-          <MascotFrame style={[styles.content, compact && styles.contentCompact]}>
+          <View style={[styles.content, compact && styles.contentCompact]}>
             <View style={[styles.badge, { width: badgeSize, height: badgeSize, borderRadius: badgeSize / 2 }]}>
-              <MascotAnchor id="walkComplete" size={mascotSize} />
+              <MascotDockSlot variant="popup" diameter={badgeSize} />
               <View style={styles.homeBadge}>
                 <Icon name="home" size={18} color={colors.onPrimary} />
               </View>
@@ -123,7 +122,7 @@ export function WalkCompleteModal({ walker, minutesWalked, km, kcal, fare, onDon
               onPress={() => onDone(rating, tip)}
               style={styles.stretch}
             />
-          </MascotFrame>
+          </View>
         </Animated.View>
       </View>
     </View>

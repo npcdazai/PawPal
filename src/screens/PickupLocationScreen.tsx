@@ -17,9 +17,9 @@ import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
 import { Icon } from '../components/Icon';
 import { PrimaryButton } from '../components/Button';
-import { MascotAnchor, MascotFrame } from '../mascot/MascotAnchor';
+import { MascotDockSlot } from '../mascot/MascotDockSlot';
 import { useMascotActions } from '../mascot/MascotProvider';
-import { NATIVE_DRIVER } from '../mascot/MascotMachine';
+import { NATIVE_DRIVER } from '../theme/motion';
 import { useAppNavigation } from '../navigation/useAppNavigation';
 import { useBookings } from '../booking/BookingsProvider';
 import { NeighborhoodMap } from '../booking/NeighborhoodMap';
@@ -35,8 +35,8 @@ import {
 } from '../booking/pickupPlaces';
 import type { WalkerId } from '../data/careTeam';
 
-const PIN_SIZE = 96;
-const PIN_MASCOT = 78;
+/** The map-pin slot. */
+const PIN_SIZE = 68;
 const PIN_LABEL_WIDTH = 160;
 const GPS_LOCK_MS = 900;
 const SEARCH_BLUR_GRACE_MS = 180;
@@ -159,22 +159,21 @@ export function PickupLocationScreen() {
           pan.setValue(panTarget(placeKey, { width, height }));
         }}
       >
-        <MascotFrame style={StyleSheet.absoluteFill}>
+        <View style={StyleSheet.absoluteFill}>
           <NeighborhoodMap pan={pan} />
           {viewport.width > 0 ? (
             <View
-              pointerEvents="none"
+              pointerEvents="box-none"
               style={[
                 styles.pin,
                 { left: viewport.width / 2 - PIN_SIZE / 2, top: viewport.height / 2 - PIN_SIZE / 2 },
               ]}
             >
               <PulseRings size={PIN_SIZE} colors={[colors.coral, colors.coral]} scaleTo={1.8} />
-              <View style={styles.pinCircle}>
-                <MascotAnchor id="pickup" size={PIN_MASCOT} active={!searching} />
-              </View>
-              <View style={styles.pinTip} />
-              <View style={styles.pinLabelSlot}>
+              <View pointerEvents="none" style={styles.pinTip} />
+              {/* Barnaby walks out of the pin and into the search dialog. */}
+              <MascotDockSlot variant="map-pin" active={!searching} style={styles.pinShadow} />
+              <View pointerEvents="none" style={styles.pinLabelSlot}>
                 <View style={styles.pinLabel}>
                   <Text style={styles.pinLabelText} numberOfLines={1}>
                     Pickup Location
@@ -183,7 +182,7 @@ export function PickupLocationScreen() {
               </View>
             </View>
           ) : null}
-        </MascotFrame>
+        </View>
 
         {/* Floating search */}
         <View style={styles.searchRow} pointerEvents="box-none">
@@ -449,15 +448,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pinCircle: {
-    width: PIN_SIZE,
-    height: PIN_SIZE,
+  pinShadow: {
     borderRadius: PIN_SIZE / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.stage,
-    borderWidth: 4,
-    borderColor: colors.card,
     ...shadows.float,
   },
   pinTip: {

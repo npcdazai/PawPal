@@ -1,19 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
 import { Icon } from '../components/Icon';
 import { Badge } from '../components/Badge';
 import { PrimaryButton } from '../components/Button';
-import { MascotAnchor, MascotScrollView } from '../mascot/MascotAnchor';
+import { MascotDockSlot } from '../mascot/MascotDockSlot';
 import { useMascotActions, useMascotStatus } from '../mascot/MascotProvider';
-import { MASCOT_BASE_SIZE } from '../mascot/mascotModel';
-import { NATIVE_DRIVER } from '../mascot/MascotMachine';
+import { NATIVE_DRIVER } from '../theme/motion';
 import { useAppNavigation } from '../navigation/useAppNavigation';
 
+/** The hero-circle slot is 220px; the orbs float just outside it. */
 const HERO_SIZE = 220;
-const MASCOT_SIZE = Math.round(MASCOT_BASE_SIZE * 1.1);
 
 export function SplashScreen() {
   const { go } = useAppNavigation();
@@ -22,7 +21,7 @@ export function SplashScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <MascotScrollView
+      <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
@@ -33,9 +32,7 @@ export function SplashScreen() {
             <View style={[styles.orb, styles.orbAmber]} />
             <View style={[styles.orb, styles.orbCoral]} />
             <View style={[styles.orb, styles.orbBlue]} />
-            <View style={styles.heroCircle}>
-              <MascotAnchor id="splash" size={MASCOT_SIZE} style={styles.heroMascot} />
-            </View>
+            <MascotDockSlot variant="hero-circle" />
           </View>
 
           <Pressable
@@ -71,7 +68,7 @@ export function SplashScreen() {
           label="Tap to Begin"
           onPress={() => go('begin')}
         />
-      </MascotScrollView>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -143,17 +140,6 @@ const styles = StyleSheet.create({
     height: HERO_SIZE + 12,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  heroCircle: {
-    width: HERO_SIZE,
-    height: HERO_SIZE,
-    borderRadius: HERO_SIZE / 2,
-    backgroundColor: colors.stage,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroMascot: {
-    marginTop: 8,
   },
   orb: {
     position: 'absolute',

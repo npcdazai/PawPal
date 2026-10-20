@@ -1,5 +1,10 @@
 import { Animated } from 'react-native';
-import type { AnchorOffset } from '../mascot/MascotMachine';
+
+/** A native-driven x/y offset (e.g. a pin travelling along a route). */
+export interface RouteOffset {
+  x: Animated.AnimatedInterpolation<number>;
+  y: Animated.AnimatedInterpolation<number>;
+}
 
 export interface Point {
   x: number;
@@ -59,9 +64,9 @@ export const toSvgPath = (points: readonly Point[]) =>
 
 /**
  * Native-driven offset from the route's start that follows `progress` (0–1)
- * along the polyline — moves a pin (and Barnaby's stage) smoothly.
+ * along the polyline — moves a pin (and Barnaby's slot inside it) smoothly.
  */
-export function routeOffset(route: Route, progress: Animated.Value): AnchorOffset {
+export function routeOffset(route: Route, progress: Animated.Value): RouteOffset {
   const origin = route.points[0];
   // Interpolation needs strictly increasing input; nudge any zero-length segments.
   const inputRange = route.fractions.map((fraction, index) => fraction + index * 1e-6);

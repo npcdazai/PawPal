@@ -3,7 +3,7 @@ import { Animated, Easing, Pressable, StyleSheet, Text, View, type StyleProp, ty
 import { colors, radii, shadows } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { Icon } from '../components/Icon';
-import { NATIVE_DRIVER } from '../mascot/MascotMachine';
+import { NATIVE_DRIVER } from '../theme/motion';
 
 /** Green "live" dot that softly pulses. */
 export function PulsingDot({ color = colors.success, size = 10 }: { color?: string; size?: number }) {
