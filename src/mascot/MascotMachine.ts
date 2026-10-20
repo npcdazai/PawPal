@@ -15,6 +15,8 @@ import {
 
 export const NATIVE_DRIVER = Platform.OS !== 'web';
 
+const DEFAULT_WOOF = 'Woof! 🐾';
+
 /** Host instance of a <View> (RN 0.88 types View as a function component). */
 export type ViewHandle = ComponentRef<typeof View>;
 
@@ -41,6 +43,15 @@ export interface AnchorRequest {
   scroll: MascotScrollHandle;
   /** Barnaby is clipped below this view's top edge so he can duck behind it. */
   clipRef?: RefObject<ViewHandle | null>;
+  /** Live offset from the anchor, for pins that travel (e.g. along a walk route). */
+  offset?: AnchorOffset;
+}
+
+type AnimatedNumber = Animated.Value | Animated.AnimatedInterpolation<number>;
+
+export interface AnchorOffset {
+  x: AnimatedNumber;
+  y: AnimatedNumber;
 }
 
 /** Where the persistent stage draws Barnaby for the active anchor. */
@@ -57,6 +68,7 @@ export interface MascotPlacement {
   clipLine: number | null;
   /** -scrollY, so the stage moves with the screen's content. */
   contentShift: Animated.AnimatedNode;
+  offset: AnchorOffset | null;
 }
 
 export interface MascotAnimations {
@@ -74,7 +86,7 @@ export interface MascotAnimations {
 interface MachineEvents {
   onState: (state: MascotState) => void;
   onPlacement: (placement: MascotPlacement) => void;
-  onBark: (pillId: number) => void;
+  onBark: (pillId: number, text: string) => void;
 }
 
 const MEASURE_ATTEMPTS = 6;
@@ -121,6 +133,15 @@ export class MascotMachine {
   /** True from the moment Barnaby starts leaving until he is off-screen. */
   private leaving = false;
   private woofTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Searching for walkers: rest in STATE_SCANNING instead of idling. */
+  private scanning = false;
+  private scanTimer: ReturnType<typeof setInterval> | null = null;
+  /** Out on a walk: rest in STATE_WALKING, facing the direction of travel. */
+  private walking = false;
+  private heading: 1 | -1 = 1;
+  /** Brief curious tilt after an option is flipped. */
+  private glancing = false;
+  private glanceTimer: ReturnType<typeof setTimeout> | null = null;
   private pillSeq = 0;
   private stage: ViewHandle | null = null;
   private haptics = true;
@@ -181,9 +202,14 @@ export class MascotMachine {
   };
 
   /** STATE_WOOF_BARK: pets, treats and quick care actions. */
-  bark = () => {
+  bark = () => this.woof(DEFAULT_WOOF);
+
+  /** STATE_WOOF_BARK with a custom speech pill, e.g. "Woof! Let's go! 🐾". */
+  barkWith = (text: string) => this.woof(text);
+
+  private woof(text: string) {
     this.pillSeq += 1;
-    this.events.onBark(this.pillSeq);
+    this.events.onBark(this.pillSeq, text);
     this.pulse();
     if (!isResting(this.state)) return; // travelling or hidden: the pill and counter are enough
 
@@ -226,21 +252,54 @@ export class MascotMachine {
       this.woofTimer = null;
       if (this.state === 'STATE_WOOF_BARK') this.settle();
     }, WOOF_DURATION_MS);
-  };
+  }
 
   /** STATE_CURIOUS_TILT for text fields, STATE_PEEKING_DUCK for passwords. */
   focusField = (kind: FieldKind) => {
     this.field = kind;
-    if (isResting(this.state) && this.state !== 'STATE_WOOF_BARK') this.settle();
+    if (this.canReact()) this.settle();
   };
 
   blurField = () => {
     this.field = null;
-    if (isResting(this.state) && this.state !== 'STATE_WOOF_BARK') this.settle();
+    if (this.canReact()) this.settle();
+  };
+
+  /** A short STATE_CURIOUS_TILT, e.g. when a walk option is flipped. */
+  glance = () => {
+    if (this.glanceTimer) clearTimeout(this.glanceTimer);
+    this.glancing = true;
+    if (this.canReact()) this.settle();
+    this.glanceTimer = setTimeout(() => {
+      this.glanceTimer = null;
+      this.glancing = false;
+      if (this.canReact()) this.settle();
+    }, PHYSICS.glanceMs);
+  };
+
+  /** STATE_SCANNING: walk in place, looking left and right, until switched off. */
+  setScanning = (on: boolean) => {
+    this.scanning = on;
+    if (this.canReact()) this.settle();
+  };
+
+  /** STATE_WALKING: walking frames while his pin travels a route. */
+  setWalking = (on: boolean) => {
+    this.walking = on;
+    if (this.canReact()) this.settle();
+  };
+
+  /** Face the direction of travel while walking (1 = right, -1 = left). */
+  face = (direction: 1 | -1) => {
+    if (direction === this.heading) return;
+    this.heading = direction;
+    if (this.state === 'STATE_WALKING') this.turnTo(direction);
   };
 
   dispose() {
     this.clearWoof();
+    if (this.glanceTimer) clearTimeout(this.glanceTimer);
+    if (this.scanTimer) clearInterval(this.scanTimer);
     this.stopAll();
   }
 
@@ -367,8 +426,15 @@ export class MascotMachine {
 
   private restingState(): RestingState {
     if (this.field === 'password') return 'STATE_PEEKING_DUCK';
-    if (this.field === 'text') return 'STATE_CURIOUS_TILT';
+    if (this.field === 'text' || this.glancing) return 'STATE_CURIOUS_TILT';
+    if (this.scanning) return 'STATE_SCANNING';
+    if (this.walking) return 'STATE_WALKING';
     return 'STATE_IDLE_CENTER';
+  }
+
+  /** Resting on an anchor and free to react (not mid-woof). */
+  private canReact() {
+    return isResting(this.state) && this.state !== 'STATE_WOOF_BARK';
   }
 
   private animatePose(target: Pose) {
@@ -427,6 +493,7 @@ export class MascotMachine {
           top: toContentY(anchor.y) + (anchor.height - request.size) / 2,
           clipLine: clip ? toContentY(clip.y) : null,
           contentShift: Animated.multiply(request.scroll.scrollY, -1),
+          offset: request.offset ?? null,
         };
       }
       await wait(MEASURE_RETRY_MS);
@@ -447,8 +514,48 @@ export class MascotMachine {
   }
 
   private setState(state: MascotState) {
+    const previous = this.state;
     this.state = state;
+    if (state === 'STATE_SCANNING' && previous !== 'STATE_SCANNING') this.startScanTurns();
+    else if (previous === 'STATE_SCANNING' && state !== 'STATE_SCANNING') this.stopScanTurns();
+    if (state === 'STATE_WALKING' && previous !== 'STATE_WALKING') this.turnTo(this.heading);
+    else if (previous === 'STATE_WALKING' && state !== 'STATE_WALKING') this.turnTo(1);
     this.events.onState(state);
+  }
+
+  private turnTo(direction: 1 | -1) {
+    this.anim.facing.stopAnimation();
+    Animated.timing(this.anim.facing, {
+      toValue: direction,
+      duration: PHYSICS.turnMs,
+      useNativeDriver: NATIVE_DRIVER,
+    }).start();
+  }
+
+  private startScanTurns() {
+    let lookingLeft = false;
+    this.scanTimer = setInterval(() => {
+      lookingLeft = !lookingLeft;
+      Animated.timing(this.anim.facing, {
+        toValue: lookingLeft ? -1 : 1,
+        duration: 220,
+        easing: Easing.inOut(Easing.quad),
+        useNativeDriver: NATIVE_DRIVER,
+      }).start();
+    }, PHYSICS.scanTurnMs);
+  }
+
+  private stopScanTurns() {
+    if (this.scanTimer) {
+      clearInterval(this.scanTimer);
+      this.scanTimer = null;
+    }
+    this.anim.facing.stopAnimation();
+    Animated.timing(this.anim.facing, {
+      toValue: 1,
+      duration: PHYSICS.turnMs,
+      useNativeDriver: NATIVE_DRIVER,
+    }).start();
   }
 
   private setPlacement(placement: MascotPlacement) {

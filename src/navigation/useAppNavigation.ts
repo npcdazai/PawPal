@@ -48,6 +48,10 @@ export function useAppNavigation() {
             if (router.canDismiss()) router.dismissAll();
             router.replace(href);
             break;
+          case 'stackOnRoot':
+            if (router.canDismiss()) router.dismissAll();
+            router.push(href);
+            break;
         }
       }, backwards ? 'back' : 'forward');
     },

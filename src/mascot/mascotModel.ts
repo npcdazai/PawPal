@@ -11,12 +11,18 @@ export type MascotState =
   | 'STATE_CURIOUS_TILT'
   | 'STATE_PEEKING_DUCK'
   | 'STATE_WOOF_BARK'
+  | 'STATE_SCANNING'
+  | 'STATE_WALKING'
   | 'STATE_EXIT_TO_LEFT'
   | 'STATE_EXIT_TO_RIGHT';
 
 export type RestingState = Extract<
   MascotState,
-  'STATE_IDLE_CENTER' | 'STATE_CURIOUS_TILT' | 'STATE_PEEKING_DUCK'
+  | 'STATE_IDLE_CENTER'
+  | 'STATE_CURIOUS_TILT'
+  | 'STATE_PEEKING_DUCK'
+  | 'STATE_SCANNING'
+  | 'STATE_WALKING'
 >;
 
 /** Which kind of input currently has focus; drives the curious / peeking poses. */
@@ -47,6 +53,10 @@ export const PHYSICS = {
   edgePadding: 24,
   woof: { hopY: -14, scale: 1.08, upMs: 140, fps: 12 },
   pillMs: 800,
+  /** Curious head tilt when the user flips an option (e.g. walk timing). */
+  glanceMs: 900,
+  /** Look left / right while scanning for walkers. */
+  scanTurnMs: 1100,
   walkFps: 12,
   sprintFps: 16,
   idleFps: 8,
@@ -63,6 +73,8 @@ export const POSES: Record<RestingState, Pose> = {
   STATE_IDLE_CENTER: { y: 0, scale: 1, rotate: 0 },
   STATE_CURIOUS_TILT: { y: -2, scale: 1.04, rotate: 8 },
   STATE_PEEKING_DUCK: { y: 22, scale: 0.9, rotate: 0 },
+  STATE_SCANNING: { y: 0, scale: 1, rotate: 0 },
+  STATE_WALKING: { y: 0, scale: 1, rotate: 0 },
 };
 
 export const SPRITE_FRAME_COUNT = 6;
@@ -145,6 +157,8 @@ export const isResting = (state: MascotState) =>
   state === 'STATE_IDLE_CENTER' ||
   state === 'STATE_CURIOUS_TILT' ||
   state === 'STATE_PEEKING_DUCK' ||
+  state === 'STATE_SCANNING' ||
+  state === 'STATE_WALKING' ||
   state === 'STATE_WOOF_BARK';
 
 /** Maps a machine state to the sprite clip and frame rate that should play. */
@@ -152,7 +166,9 @@ export function spriteFor(
   state: MascotState,
   wagFps: number
 ): { clip: SpriteClipName; fps: number } {
-  if (isEntering(state)) return { clip: 'walk', fps: PHYSICS.walkFps };
+  if (isEntering(state) || state === 'STATE_SCANNING' || state === 'STATE_WALKING') {
+    return { clip: 'walk', fps: PHYSICS.walkFps };
+  }
   if (isLeaving(state)) return { clip: 'walk', fps: PHYSICS.sprintFps };
   if (state === 'STATE_WOOF_BARK') return { clip: 'woof', fps: PHYSICS.woof.fps };
   if (state === 'STATE_HIDDEN') return { clip: 'idle', fps: 0 };

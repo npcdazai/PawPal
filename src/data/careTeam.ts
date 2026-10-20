@@ -1,6 +1,6 @@
 import { colors } from '../theme/colors';
 
-export type WalkerId = 'marcus' | 'elena' | 'david' | 'sarahm';
+export type WalkerId = 'marcus' | 'elena' | 'david' | 'sarahm' | 'alex';
 
 export interface Walker {
   id: WalkerId;
@@ -10,6 +10,10 @@ export interface Walker {
   role: string;
   rating: number;
   walksWithBarnaby: number;
+  /** All walks on PawPal (shown on the tracking screen). */
+  totalWalks: number;
+  /** Walker's phone, for the call buttons. */
+  phone: string;
   badges: readonly string[];
   tint: string;
   ink: string;
@@ -26,6 +30,8 @@ export const WALKERS: Record<WalkerId, Walker> = {
     role: 'Walk Star',
     rating: 4.9,
     walksWithBarnaby: 18,
+    totalWalks: 412,
+    phone: '+15550101818',
     badges: ['Background Cleared', 'Pet CPR Certified'],
     tint: colors.primaryTint,
     ink: colors.primary,
@@ -39,6 +45,8 @@ export const WALKERS: Record<WalkerId, Walker> = {
     role: 'Overnight Sitter',
     rating: 5.0,
     walksWithBarnaby: 8,
+    totalWalks: 236,
+    phone: '+15550102727',
     badges: ['Background Cleared', 'Key Holder'],
     tint: colors.coralTint,
     ink: colors.coralInk,
@@ -51,6 +59,8 @@ export const WALKERS: Record<WalkerId, Walker> = {
     role: 'Trail Walker',
     rating: 4.8,
     walksWithBarnaby: 3,
+    totalWalks: 97,
+    phone: '+15550103636',
     badges: ['Background Cleared'],
     tint: colors.amberTint,
     ink: colors.amberInk,
@@ -63,9 +73,26 @@ export const WALKERS: Record<WalkerId, Walker> = {
     role: 'Weekend Walker',
     rating: 4.9,
     walksWithBarnaby: 0,
+    totalWalks: 154,
+    phone: '+15550104545',
     badges: ['Background Cleared', 'Pet CPR Certified'],
     tint: colors.successTint,
     ink: colors.successInk,
+  },
+  // Default instant-dispatch match when no favourite walker is requested.
+  alex: {
+    id: 'alex',
+    name: 'Alex Rivera',
+    shortName: 'Alex R.',
+    initials: 'AR',
+    role: 'Instant Walker',
+    rating: 4.9,
+    walksWithBarnaby: 0,
+    totalWalks: 128,
+    phone: '+15550124477',
+    badges: ['Background Cleared', 'Pet CPR Certified'],
+    tint: colors.primaryTint,
+    ink: colors.primaryPressed,
   },
 };
 
@@ -73,11 +100,3 @@ export const WALKER_IDS = Object.keys(WALKERS) as WalkerId[];
 
 export const isWalkerId = (value: unknown): value is WalkerId =>
   typeof value === 'string' && value in WALKERS;
-
-export type PetChoice = 'barnaby' | 'luna' | 'both';
-
-export const PET_CHOICES: readonly { key: PetChoice; label: string; names: string }[] = [
-  { key: 'barnaby', label: 'Barnaby (Corgi)', names: 'Barnaby' },
-  { key: 'luna', label: 'Luna', names: 'Luna' },
-  { key: 'both', label: 'Both Pets', names: 'Barnaby & Luna' },
-];

@@ -186,7 +186,15 @@ function SpriteAccents({ clip, frame }: { clip: SpriteClipName; frame: number })
 }
 
 /** Coral "Woof! 🐾" speech pill: pops in, floats up and fades out over 800ms. */
-export function WoofPill({ id, onDone }: { id: number; onDone: (id: number) => void }) {
+export function WoofPill({
+  id,
+  text,
+  onDone,
+}: {
+  id: number;
+  text: string;
+  onDone: (id: number) => void;
+}) {
   const [progress] = useState(() => new Animated.Value(0));
   // Deterministic jitter so rapid pets fan out instead of stacking exactly.
   const jitter = ((id * 37) % 41) - 20;
@@ -218,7 +226,9 @@ export function WoofPill({ id, onDone }: { id: number; onDone: (id: number) => v
       pointerEvents="none"
       style={[styles.pill, { opacity, transform: [{ translateX: jitter }, { translateY }, { scale }] }]}
     >
-      <Text style={styles.pillText}>Woof! 🐾</Text>
+      <Text style={styles.pillText} numberOfLines={1}>
+        {text}
+      </Text>
     </Animated.View>
   );
 }

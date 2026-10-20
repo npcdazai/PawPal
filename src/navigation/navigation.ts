@@ -1,5 +1,5 @@
 /**
- * Single source of truth for Pawsome's navigation, as one nested
+ * Single source of truth for PawPal's navigation, as one nested
  * JSON-compatible object (plain strings, booleans, objects and arrays only):
  *
  *  - groups  → every route, grouped by whether the common tab bar is shown
@@ -16,7 +16,8 @@ export type NavAction =
   | 'replace' //   swap the current screen
   | 'back' //      pop back (falls back to replace when there is no history)
   | 'reset' //     make the screen the only one in the stack
-  | 'dismissTo'; // pop back to an existing screen
+  | 'dismissTo' // pop back to an existing screen
+  | 'stackOnRoot'; // pop to the root screen, then push (e.g. Dashboard → tracking)
 
 interface RouteConfig {
   /** File name under src/app. */
@@ -81,12 +82,20 @@ export const NAVIGATION = {
     tasks: {
       tabBar: false,
       routes: {
-        bookWalker: {
-          name: 'book-walker',
-          path: '/book-walker',
-          title: 'Dog Walker Booking',
+        walkConfig: { name: 'book-walk', path: '/book-walk', title: 'Book a Walk', stack: 'push' },
+        pickupLocation: {
+          name: 'pickup-location',
+          path: '/pickup-location',
+          title: 'Pickup Location',
           stack: 'push',
         },
+        walkerEnRoute: {
+          name: 'walk-tracking',
+          path: '/walk-tracking',
+          title: 'Live Walker Tracking',
+          stack: 'push',
+        },
+        liveWalk: { name: 'live-walk', path: '/live-walk', title: 'Live Walk', stack: 'push' },
       },
     },
   },
@@ -98,8 +107,15 @@ export const NAVIGATION = {
     authenticated: { to: 'dashboard', action: 'reset' }, //  Log in / Create Account
     closeProfile: { to: 'dashboard', action: 'back' }, //    Profile back arrow
     signOut: { to: 'login', action: 'reset' }, //            Profile "Log out"
-    bookWalker: { to: 'bookWalker', action: 'push' }, //     "Book a Dog Walker" / Rebook
-    closeBooking: { to: 'dashboard', action: 'back' }, //    Booking back arrow / Done
+    bookWalk: { to: 'walkConfig', action: 'push' }, //       "Book a Dog Walker" / Log Walk / Rebook
+    closeBooking: { to: 'dashboard', action: 'back' }, //    Book a Walk back arrow
+    choosePickup: { to: 'pickupLocation', action: 'push' }, // "Select Pickup Location"
+    backToWalkSetup: { to: 'walkConfig', action: 'back' }, // Pickup back arrow
+    walkBooked: { to: 'dashboard', action: 'dismissTo' }, //  Scheduled walk matched → Done
+    trackWalker: { to: 'walkerEnRoute', action: 'stackOnRoot' }, // Instant match → Done / "Track walker"
+    startLiveWalk: { to: 'liveWalk', action: 'replace' }, //  "Verify OTP & Start Walk"
+    openLiveWalk: { to: 'liveWalk', action: 'stackOnRoot' }, // Dashboard "Live walk"
+    exitTracking: { to: 'dashboard', action: 'dismissTo' }, // Tracking back / cancel / walk done
   },
 
   tabBar: {

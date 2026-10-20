@@ -59,7 +59,13 @@ export function MascotStage() {
                   width: placement.size,
                   height: placement.size,
                   opacity: anim.opacity,
-                  transform: [{ translateX: anim.travelX }],
+                  transform: [
+                    { translateX: anim.travelX },
+                    // Travelling pins (walk route) move Barnaby with them.
+                    ...(placement.offset
+                      ? [{ translateX: placement.offset.x }, { translateY: placement.offset.y }]
+                      : []),
+                  ],
                 },
               ]}
             >
@@ -71,8 +77,8 @@ export function MascotStage() {
                 onPress={bark}
               />
               <View pointerEvents="none" style={styles.pills}>
-                {pills.map((id) => (
-                  <WoofPill key={id} id={id} onDone={dismissPill} />
+                {pills.map((pill) => (
+                  <WoofPill key={pill.id} id={pill.id} text={pill.text} onDone={dismissPill} />
                 ))}
               </View>
             </Animated.View>

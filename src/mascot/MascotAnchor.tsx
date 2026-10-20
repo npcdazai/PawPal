@@ -26,6 +26,7 @@ import {
 } from 'expo-router';
 import {
   NATIVE_DRIVER,
+  type AnchorOffset,
   type AnchorRequest,
   type MascotScrollHandle,
   type ViewHandle,
@@ -89,6 +90,34 @@ export function MascotScrollView({ scrollRef, style, children, ...rest }: Mascot
   );
 }
 
+/**
+ * A non-scrolling area Barnaby can stand in (a map, a dialog). Sized by its
+ * own layout, unlike MascotScrollView which needs a bounded height.
+ */
+export function MascotFrame({
+  style,
+  children,
+}: {
+  style?: StyleProp<ViewStyle>;
+  children: ReactNode;
+}) {
+  const frameRef = useRef<ViewHandle>(null);
+  const [scrollY] = useState(() => new Animated.Value(0));
+  const { remeasure } = useMascotAnchorApi();
+
+  // No scrolling: the frame is both the clip viewport and the content origin.
+  const handle = useMemo<MascotScrollHandle>(
+    () => ({ scrollY, originRef: frameRef, viewportRef: frameRef }),
+    [scrollY]
+  );
+
+  return (
+    <View ref={frameRef} style={style} onLayout={() => remeasure()}>
+      <ScrollContext.Provider value={handle}>{children}</ScrollContext.Provider>
+    </View>
+  );
+}
+
 interface MascotAnchorProps {
   /** Stable per screen. */
   id: string;
@@ -96,6 +125,16 @@ interface MascotAnchorProps {
   size: number;
   /** Barnaby ducks behind this view's top edge (STATE_PEEKING_DUCK). */
   clipRef?: RefObject<ViewHandle | null>;
+  /**
+   * Live offset for a pin that travels: the placeholder stays put and Barnaby
+   * is drawn this far from it (must be the same values that move the pin).
+   */
+  offset?: AnchorOffset;
+  /**
+   * Lets one screen hand Barnaby between spots (e.g. map pin → search dialog):
+   * an inactive anchor releases him, and claims him again when re-activated.
+   */
+  active?: boolean;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -104,7 +143,14 @@ interface MascotAnchorProps {
  * slide transition finishes, the anchor claims the persistent mascot, which
  * then walks in (STATE_ENTER_FROM_RIGHT); on blur it releases him.
  */
-export function MascotAnchor({ id, size, clipRef, style }: MascotAnchorProps) {
+export function MascotAnchor({
+  id,
+  size,
+  clipRef,
+  offset,
+  active = true,
+  style,
+}: MascotAnchorProps) {
   const scroll = useContext(ScrollContext);
   const anchorRef = useRef<ViewHandle>(null);
   const { claim, release, remeasure } = useMascotAnchorApi();
@@ -112,8 +158,8 @@ export function MascotAnchor({ id, size, clipRef, style }: MascotAnchorProps) {
 
   useFocusEffect(
     useCallback(() => {
-      if (!scroll) return undefined;
-      const request: AnchorRequest = { id, size, anchorRef, scroll, clipRef };
+      if (!scroll || !active) return undefined;
+      const request: AnchorRequest = { id, size, anchorRef, scroll, clipRef, offset };
       let claimed = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -143,7 +189,7 @@ export function MascotAnchor({ id, size, clipRef, style }: MascotAnchorProps) {
         offEnd();
         release(id);
       };
-    }, [id, size, clipRef, scroll, claim, release, navigation])
+    }, [id, size, clipRef, offset, active, scroll, claim, release, navigation])
   );
 
   return (

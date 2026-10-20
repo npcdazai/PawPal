@@ -16,13 +16,15 @@ import { MascotAnchor, MascotScrollView } from '../mascot/MascotAnchor';
 import { useMascotActions } from '../mascot/MascotProvider';
 import { DOCK_SCALE, MASCOT_BASE_SIZE } from '../mascot/mascotModel';
 import { Avatar } from '../components/Avatar';
-import { useBookings, type WalkBooking } from '../booking/BookingsProvider';
-import { DURATIONS, formatMoney } from '../booking/walkPricing';
+import { useBookings, type WalkBooking, type WalkStatus } from '../booking/BookingsProvider';
+import { formatMoney } from '../booking/walkPlans';
+import { PICKUP_PLACES } from '../booking/pickupPlaces';
 import { WALKERS, WALKER_IDS, type WalkerId } from '../data/careTeam';
 
 const DOCK_SIZE = Math.round(MASCOT_BASE_SIZE * DOCK_SCALE);
 const DOCK_BADGE = DOCK_SIZE + 12;
 const WALK_GOAL_KM = 4;
+const TODAY_WALK_KM = 3.2;
 const KCAL_PER_KM = 65.6;
 const DAILY_MEALS = 2;
 
@@ -85,7 +87,8 @@ const toSection = (value: string | undefined): DashboardSection =>
 export function DashboardScreen() {
   const { go, goToTab } = useAppNavigation();
   const { bookings } = useBookings();
-  const nextWalk = bookings[0];
+  const nextWalk = bookings.find((booking) => booking.status !== 'cancelled');
+  const completedWalks = bookings.filter((booking) => booking.status === 'completed');
   const { bark } = useMascotActions();
   const { message, show } = useToast();
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
@@ -95,11 +98,25 @@ export function DashboardScreen() {
   const params = useLocalSearchParams<{ section?: string }>();
   const section = toSection(params.section);
   const [treats, setTreats] = useState(3);
-  const [walkKm, setWalkKm] = useState(3.2);
+  // Completed walker walks add to today's distance.
+  const walkKm =
+    Math.round(
+      (TODAY_WALK_KM + completedWalks.reduce((sum, walk) => sum + (walk.distanceKm ?? 0), 0)) * 10
+    ) / 10;
   const [mealsServed, setMealsServed] = useState(2);
   const [bonusSnacks, setBonusSnacks] = useState(0);
   const [moments, setMoments] = useState<Moment[]>(INITIAL_MOMENTS);
   const momentSeq = useRef(0);
+
+  const walkMoments: Moment[] = completedWalks.map((walk) => ({
+    id: walk.id,
+    title: `Walk with ${WALKERS[walk.walkerId].shortName}`,
+    detail: `${walk.distanceKm?.toFixed(2) ?? '0.00'} km · ${'★'.repeat(walk.rating ?? 5)} · Home safe`,
+    time: walk.completedAt ? formatClock(new Date(walk.completedAt)) : '',
+    icon: 'directions-walk',
+    tint: colors.successTint,
+    ink: colors.successInk,
+  }));
 
   const walkPercent = Math.min(100, Math.round((walkKm / WALK_GOAL_KM) * 100));
   const kcal = Math.round(walkKm * KCAL_PER_KM);
@@ -111,20 +128,13 @@ export function DashboardScreen() {
   };
 
   const runQuickAction = (action: QuickAction) => {
+    // "Log Walk" starts the Book a Walk flow; Barnaby walks ahead instead of barking.
+    if (action === 'walk') {
+      go('bookWalk');
+      return;
+    }
     bark();
     switch (action) {
-      case 'walk': {
-        setWalkKm((km) => Math.round((km + 0.4) * 10) / 10);
-        logMoment({
-          title: 'Quick Walk Logged',
-          detail: '+0.4 km around the block',
-          icon: 'directions-walk',
-          tint: colors.primaryTint,
-          ink: colors.primary,
-        });
-        show('Walk logged · +0.4 km 🦮');
-        break;
-      }
       case 'feed': {
         if (mealsServed < DAILY_MEALS) setMealsServed((served) => served + 1);
         else setBonusSnacks((snacks) => snacks + 1);
@@ -202,7 +212,7 @@ export function DashboardScreen() {
               <Text style={styles.logoGlyph}>🐾</Text>
             </View>
             <View>
-              <Text style={styles.brandName}>Pawsome</Text>
+              <Text style={styles.brandName}>PawPal</Text>
               <Text style={styles.brandSection}>Home</Text>
             </View>
           </View>
@@ -261,8 +271,9 @@ export function DashboardScreen() {
 
         <WalkerBookingCard
           booking={nextWalk}
-          onBook={() => go('bookWalker')}
-          onRebook={(walkerId) => go('bookWalker', { walker: walkerId })}
+          onBook={() => go('bookWalk')}
+          onRebook={(walkerId) => go('bookWalk', { walker: walkerId })}
+          onTrack={(status) => go(status === 'inProgress' ? 'openLiveWalk' : 'trackWalker')}
         />
 
         {/* Quick care */}
@@ -368,7 +379,7 @@ export function DashboardScreen() {
           </View>
 
           <View style={styles.momentList}>
-            {moments.map((moment) => (
+            {[...walkMoments, ...moments].map((moment) => (
               <View key={moment.id} style={styles.momentRow}>
                 <View style={[styles.momentIcon, { backgroundColor: moment.tint }]}>
                   <Icon name={moment.icon} size={20} color={moment.ink} />
@@ -397,46 +408,67 @@ interface WalkerBookingCardProps {
   booking: WalkBooking | undefined;
   onBook: () => void;
   onRebook: (walkerId: WalkerId) => void;
+  onTrack: (status: WalkStatus) => void;
 }
 
-/** "Book a Dog Walker" entry point; shows the next walk once one is booked. */
-function WalkerBookingCard({ booking, onBook, onRebook }: WalkerBookingCardProps) {
-  if (booking) {
+const CARD_COPY: Record<
+  Exclude<WalkStatus, 'cancelled'>,
+  { title: string; badge: string; tone: 'success' | 'coral' | 'primary'; action: string }
+> = {
+  enRoute: { title: 'Walker on the way', badge: 'Matched', tone: 'success', action: 'Track walker' },
+  inProgress: { title: 'Walk in progress', badge: 'Live', tone: 'coral', action: 'Live walk' },
+  scheduled: { title: 'Next walk booked', badge: 'Confirmed', tone: 'primary', action: 'Book again' },
+  completed: { title: 'Last walk complete', badge: 'Home safe', tone: 'success', action: 'Book again' },
+};
+
+/** "Book a Dog Walker" entry point; follows the latest walk through tracking to completion. */
+function WalkerBookingCard({ booking, onBook, onRebook, onTrack }: WalkerBookingCardProps) {
+  if (booking && booking.status !== 'cancelled') {
     const walker = WALKERS[booking.walkerId];
-    const duration = DURATIONS.find((option) => option.key === booking.duration);
+    const place = PICKUP_PLACES[booking.placeKey];
+    const copy = CARD_COPY[booking.status];
+    const tracking = booking.status === 'enRoute' || booking.status === 'inProgress';
+    const detail =
+      booking.status === 'completed'
+        ? `${booking.distanceKm?.toFixed(2) ?? '0.00'} km with ${walker.shortName} · ${'★'.repeat(booking.rating ?? 5)}`
+        : booking.status === 'inProgress'
+          ? `with ${walker.shortName} · Elm Creek Park loop`
+          : booking.status === 'enRoute'
+            ? `${walker.shortName} ⭐ ${walker.rating.toFixed(1)} · heading to ${place.emoji} ${booking.placeLabel}`
+            : `${walker.shortName} ⭐ ${walker.rating.toFixed(1)} · ${booking.whenLabel}`;
     return (
       <View style={[styles.card, styles.walkerCard]}>
         <View style={styles.walkerTop}>
           <Avatar initials={walker.initials} tint={walker.tint} ink={walker.ink} size={48} />
           <View style={styles.walkerCopy}>
             <View style={styles.cardTitleRow}>
-              <Text style={styles.walkerTitle}>Next walk booked</Text>
-              <Badge label="Confirmed" tone="success" dot />
+              <Text style={styles.walkerTitle}>{copy.title}</Text>
+              <Badge label={copy.badge} tone={copy.tone} dot />
             </View>
+            <Text style={styles.cardMeta}>{detail}</Text>
             <Text style={styles.cardMeta}>
-              {booking.dateLabel}, {booking.startLabel} · {duration?.title} with {walker.shortName}
+              {booking.minutes} min walk · {place.emoji} {booking.placeLabel}
             </Text>
           </View>
         </View>
         <View style={styles.walkerBottom}>
           <Text style={styles.walkerTotal}>
-            {formatMoney(booking.total)}
-            {booking.recurring ? <Text style={styles.cardMeta}> · weekly</Text> : null}
+            {formatMoney(booking.total + (booking.tip ?? 0))}
+            {booking.tip ? <Text style={styles.cardMeta}> incl. tip</Text> : null}
           </Text>
           <Pressable
-            onPress={() => onRebook(booking.walkerId)}
+            onPress={() => (tracking ? onTrack(booking.status) : onRebook(booking.walkerId))}
             accessibilityRole="button"
             style={({ pressed }) => [styles.walkerButton, pressed && styles.pressed]}
           >
-            <Text style={styles.walkerButtonText}>Book again</Text>
-            <Icon name="arrow-forward" size={16} color={colors.onPrimary} />
+            <Text style={styles.walkerButtonText}>{copy.action}</Text>
+            <Icon name={tracking ? 'near-me' : 'arrow-forward'} size={16} color={colors.onPrimary} />
           </Pressable>
         </View>
       </View>
     );
   }
 
-  const marcus = WALKERS.marcus;
   return (
     <Pressable
       onPress={onBook}
@@ -449,10 +481,8 @@ function WalkerBookingCard({ booking, onBook, onRebook }: WalkerBookingCardProps
           <Icon name="directions-walk" size={26} color={colors.onPrimary} />
         </View>
         <View style={styles.walkerCopy}>
-          <Text style={styles.walkerTitle}>Book a Dog Walker</Text>
-          <Text style={styles.cardMeta}>
-            {marcus.shortName} is free today · from $22 per walk
-          </Text>
+          <Text style={styles.walkerTitle}>🦮 Book a Dog Walker</Text>
+          <Text style={styles.cardMeta}>Instant walks arrive in ~15 mins · from $15</Text>
         </View>
         <View style={styles.avatarStack}>
           {WALKER_IDS.slice(0, 3).map((id, index) => {

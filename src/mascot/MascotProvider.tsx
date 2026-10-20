@@ -18,6 +18,8 @@ import { type Direction, type FieldKind, type MascotState, PHYSICS } from './mas
 
 export interface MascotActions {
   bark: () => void;
+  /** Bark with a custom speech pill, e.g. "Woof! Let's go! 🐾". */
+  barkWith: (text: string) => void;
   focusField: (kind: FieldKind) => void;
   blurField: () => void;
   /** Plays STATE_EXIT and calls `go` as Barnaby sprints off, so the next screen slides in with him. */
@@ -25,6 +27,14 @@ export interface MascotActions {
   /** Register-screen readiness drives the tail wag from 8 fps up to 18 fps. */
   setWagFps: (fps: number) => void;
   setHapticsEnabled: (enabled: boolean) => void;
+  /** Brief STATE_CURIOUS_TILT when the user flips an option. */
+  glance: () => void;
+  /** STATE_SCANNING while searching (walks in place, looking around). */
+  setScanning: (on: boolean) => void;
+  /** STATE_WALKING while his pin travels a walk route. */
+  setWalking: (on: boolean) => void;
+  /** Direction of travel while walking (1 = right, -1 = left). */
+  face: (direction: 1 | -1) => void;
 }
 
 export interface MascotStatus {
@@ -47,8 +57,13 @@ interface MascotStageData {
   state: MascotState;
   placement: MascotPlacement | null;
   wagFps: number;
-  pills: number[];
+  pills: readonly WoofPillData[];
   dismissPill: (id: number) => void;
+}
+
+export interface WoofPillData {
+  id: number;
+  text: string;
 }
 
 const ActionsContext = createContext<MascotActions | null>(null);
@@ -61,7 +76,7 @@ export function MascotProvider({ children }: { children: ReactNode }) {
   const [placement, setPlacement] = useState<MascotPlacement | null>(null);
   const [delight, setDelight] = useState(0);
   const [wagFps, setWagFpsState] = useState<number>(PHYSICS.idleFps);
-  const [pills, setPills] = useState<number[]>([]);
+  const [pills, setPills] = useState<readonly WoofPillData[]>([]);
   const [hapticsEnabled, setHapticsState] = useState(true);
 
   const [machine] = useState(
@@ -69,9 +84,9 @@ export function MascotProvider({ children }: { children: ReactNode }) {
       new MascotMachine({
         onState: setState,
         onPlacement: setPlacement,
-        onBark: (pillId) => {
+        onBark: (pillId, text) => {
           setDelight((count) => count + 1);
-          setPills((current) => [...current, pillId]);
+          setPills((current) => [...current, { id: pillId, text }]);
         },
       })
   );
@@ -79,7 +94,7 @@ export function MascotProvider({ children }: { children: ReactNode }) {
   useEffect(() => () => machine.dispose(), [machine]);
 
   const dismissPill = useCallback((id: number) => {
-    setPills((current) => current.filter((pill) => pill !== id));
+    setPills((current) => current.filter((pill) => pill.id !== id));
   }, []);
 
   const setWagFps = useCallback((fps: number) => {
@@ -97,11 +112,16 @@ export function MascotProvider({ children }: { children: ReactNode }) {
   const actions = useMemo<MascotActions>(
     () => ({
       bark: machine.bark,
+      barkWith: machine.barkWith,
       focusField: machine.focusField,
       blurField: machine.blurField,
       navigate: machine.navigate,
       setWagFps,
       setHapticsEnabled,
+      glance: machine.glance,
+      setScanning: machine.setScanning,
+      setWalking: machine.setWalking,
+      face: machine.face,
     }),
     [machine, setWagFps, setHapticsEnabled]
   );

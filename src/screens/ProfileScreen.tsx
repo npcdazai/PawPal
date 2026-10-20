@@ -49,8 +49,9 @@ export function ProfileScreen() {
   const [mealReminders, setMealReminders] = useState(true);
   const [dates] = useState(() => ({ nextSit: shortDate(23), lastSpa: shortDate(-16) }));
 
-  const lastWalker = WALKERS[bookings[0]?.walkerId ?? 'marcus'];
-  const walkCount = BASE_WALKS + bookings.length;
+  const liveBookings = bookings.filter((booking) => booking.status !== 'cancelled');
+  const lastWalker = WALKERS[liveBookings[0]?.walkerId ?? 'marcus'];
+  const walkCount = BASE_WALKS + liveBookings.length;
 
   const open = (url: string, failure: string) => {
     Linking.openURL(url).catch(() => show(failure));
@@ -63,7 +64,7 @@ export function ProfileScreen() {
     setPanel((current) => (current === next ? null : next));
   };
 
-  const book = (walkerId: WalkerId) => go('bookWalker', { walker: walkerId });
+  const book = (walkerId: WalkerId) => go('bookWalk', { walker: walkerId });
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
