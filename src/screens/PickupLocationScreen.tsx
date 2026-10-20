@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -44,6 +44,8 @@ import type { WalkerId } from '../data/careTeam';
 const SEARCH_BLUR_GRACE_MS = 180;
 const PLACE_ZOOM = 16;
 const FLY_MS = 900;
+/** Give up waiting for a GPS fix and fall back to Home after this long. */
+const LOCATE_TIMEOUT_MS = 8000;
 
 /** Walkers pinging the dispatch radar around the pickup while Screen 7 searches. */
 const NEARBY_WALKERS = [
@@ -63,6 +65,14 @@ interface PickupSelection {
 const selectionFor = (key: PlaceKey): PickupSelection => {
   const { lngLat, line1, line2 } = PICKUP_PLACES[key];
   return { key, lngLat, line1, line2 };
+};
+
+/** Shown while the current location is being detected. */
+const LOCATING: PickupSelection = {
+  key: 'gps',
+  lngLat: PICKUP_PLACES.home.lngLat,
+  line1: 'Finding your location…',
+  line2: 'Using your phone’s GPS',
 };
 
 /** The live map centre, observed by Barnaby's pin without re-rendering the screen. */
@@ -93,23 +103,75 @@ export function PickupLocationScreen() {
   const { draft, addBooking } = useBookings();
   const { message, show } = useToast();
 
-  const [selection, setSelection] = useState<PickupSelection>(() => selectionFor('home'));
+  const [selection, setSelection] = useState<PickupSelection>(LOCATING);
   const [spotEdits, setSpotEdits] = useState<Partial<Record<PlaceKey, string>>>({});
   const [editingSpot, setEditingSpot] = useState(false);
   const [pickupNotes, setPickupNotes] = useState('');
   const [query, setQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
-  const [locating, setLocating] = useState(false);
+  // Booking starts by finding where the user is; the map opens once that settles.
+  const [locating, setLocating] = useState(true);
+  const [mapReady, setMapReady] = useState(false);
   const [searching, setSearching] = useState(false);
   const [center] = useState(() => createCenterStore(PICKUP_PLACES.home.lngLat));
   const mapRef = useRef<PawMapHandle>(null);
   const geocodeSeq = useRef(0);
+  /** The user chose a spot themselves, so a late GPS fix mustn't override it. */
+  const userPicked = useRef(false);
   const timers = useRef<{ blur?: ReturnType<typeof setTimeout> }>({});
 
   useEffect(() => {
     const pending = timers.current;
     return () => clearTimeout(pending.blur);
   }, []);
+
+  /** A position without a saved address: show it at once, then fill in the street. */
+  const pinAt = useCallback(
+    (key: 'gps' | 'pin', lngLat: LngLat) => {
+      geocodeSeq.current += 1;
+      const seq = geocodeSeq.current;
+      setSelection({ key, lngLat, line1: 'Finding the address…', line2: PICKUP_PLACES[key].line2 });
+      setEditingSpot(false);
+      glance();
+      reverseGeocode(lngLat).then((lines) => {
+        if (seq !== geocodeSeq.current) return;
+        setSelection((current) => ({
+          ...current,
+          line1: lines?.line1 || PICKUP_PLACES[key].line1,
+          line2: lines?.line2 || PICKUP_PLACES[key].line2,
+        }));
+      });
+    },
+    [glance]
+  );
+
+  // Auto-detect the pickup: the device's current location, or Home if it's unavailable.
+  useEffect(() => {
+    let settled = false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const settle = (here: LngLat | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      setLocating(false);
+      if (!userPicked.current) {
+        if (here) {
+          center.set(here);
+          pinAt('gps', here);
+        } else {
+          setSelection(selectionFor('home'));
+          show('Couldn’t get your location — showing Home. Tap ⌖ to try again.');
+        }
+      }
+      setMapReady(true);
+    };
+    timeout = setTimeout(() => settle(null), LOCATE_TIMEOUT_MS);
+    currentPosition().then(settle);
+    return () => {
+      settled = true;
+      clearTimeout(timeout);
+    };
+  }, [center, pinAt, show]);
 
   const placeKey = selection.key;
   const place = PICKUP_PLACES[placeKey];
@@ -122,28 +184,13 @@ export function PickupLocationScreen() {
   const flyTo = (lngLat: LngLat) => mapRef.current?.flyTo(lngLat, PLACE_ZOOM, FLY_MS);
 
   const selectPlace = (key: PlaceKey) => {
+    userPicked.current = true;
     geocodeSeq.current += 1;
     setSelection(selectionFor(key));
     setEditingSpot(false);
+    center.set(PICKUP_PLACES[key].lngLat);
     flyTo(PICKUP_PLACES[key].lngLat);
     glance();
-  };
-
-  /** A position without a saved address: show it at once, then fill in the street. */
-  const pinAt = (key: 'gps' | 'pin', lngLat: LngLat) => {
-    geocodeSeq.current += 1;
-    const seq = geocodeSeq.current;
-    setSelection({ key, lngLat, line1: 'Finding the address…', line2: PICKUP_PLACES[key].line2 });
-    setEditingSpot(false);
-    glance();
-    reverseGeocode(lngLat).then((lines) => {
-      if (seq !== geocodeSeq.current) return;
-      setSelection((current) => ({
-        ...current,
-        line1: lines?.line1 || PICKUP_PLACES[key].line1,
-        line2: lines?.line2 || 'San Francisco',
-      }));
-    });
   };
 
   const locateWithGps = async () => {
@@ -152,11 +199,11 @@ export function PickupLocationScreen() {
     const here = await currentPosition();
     setLocating(false);
     if (here) {
+      userPicked.current = true;
       pinAt('gps', here);
       flyTo(here);
     } else {
-      show('Location unavailable — using your last known spot');
-      selectPlace('gps');
+      show('Couldn’t get your location — check that location is on');
     }
   };
 
@@ -207,34 +254,44 @@ export function PickupLocationScreen() {
         </View>
       </View>
 
-      {/* Live map: drag to drop the pin anywhere, or fly to a saved place */}
+      {/* Live map: opens on the user's location; drag to drop the pin, or fly to a saved place */}
       <View style={[styles.mapArea, { height: mapHeight }]}>
-        <PawMap
-          ref={mapRef}
-          initialCenter={selection.lngLat}
-          initialZoom={PLACE_ZOOM}
-          interactive={!searching}
-          onCameraChange={center.set}
-          onCameraIdle={(lngLat, byUser) => {
-            if (byUser) pinAt('pin', lngLat);
-          }}
-          style={StyleSheet.absoluteFill}
-        >
-          {/* Barnaby walks out of the pin and into the search dialog. */}
-          <PickupPin center={center} active={!searching} />
-          {searching
-            ? NEARBY_WALKERS.map((walker) => (
-                <MapMarker
-                  key={walker.initials}
-                  lngLat={offsetMeters(selection.lngLat, walker.east, walker.north)}
-                  anchor="bottom"
-                  offset={NEARBY_WALKER_OFFSET}
-                >
-                  <NearbyWalkerPin initials={walker.initials} label={walker.label} tint={walker.tint} />
-                </MapMarker>
-              ))
-            : null}
-        </PawMap>
+        {mapReady ? (
+          <PawMap
+            ref={mapRef}
+            initialCenter={selection.lngLat}
+            initialZoom={PLACE_ZOOM}
+            interactive={!searching}
+            onCameraChange={center.set}
+            onCameraIdle={(lngLat, byUser) => {
+              if (byUser) {
+                userPicked.current = true;
+                pinAt('pin', lngLat);
+              }
+            }}
+            style={StyleSheet.absoluteFill}
+          >
+            {/* Barnaby walks out of the pin and into the search dialog. */}
+            <PickupPin center={center} active={!searching} />
+            {searching
+              ? NEARBY_WALKERS.map((walker) => (
+                  <MapMarker
+                    key={walker.initials}
+                    lngLat={offsetMeters(selection.lngLat, walker.east, walker.north)}
+                    anchor="bottom"
+                    offset={NEARBY_WALKER_OFFSET}
+                  >
+                    <NearbyWalkerPin initials={walker.initials} label={walker.label} tint={walker.tint} />
+                  </MapMarker>
+                ))
+              : null}
+          </PawMap>
+        ) : (
+          <View style={styles.locatingMap}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={styles.locatingText}>Finding your location…</Text>
+          </View>
+        )}
 
         {/* Floating search */}
         <View style={styles.searchRow} pointerEvents="box-none">
@@ -413,7 +470,12 @@ export function PickupLocationScreen() {
         </ScrollView>
 
         <View style={[styles.sheetFooter, { paddingBottom: insets.bottom + 12 }]}>
-          <PrimaryButton label="Find Nearby Walkers" onPress={findWalkers} />
+          <PrimaryButton
+            label={mapReady ? 'Find Nearby Walkers' : 'Finding your location…'}
+            trailingIcon={mapReady ? undefined : null}
+            disabled={!mapReady}
+            onPress={findWalkers}
+          />
         </View>
       </View>
 
@@ -504,6 +566,17 @@ const styles = StyleSheet.create({
   mapArea: {
     overflow: 'hidden',
     backgroundColor: '#FFFDF9',
+  },
+  locatingMap: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  locatingText: {
+    fontFamily: fonts.semibold,
+    fontSize: 14,
+    color: colors.slate,
   },
   searchRow: {
     position: 'absolute',

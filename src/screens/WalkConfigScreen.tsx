@@ -24,6 +24,7 @@ import {
 } from '../booking/walkPlans';
 import { isWalkerId } from '../data/careTeam';
 import { loadPetCareStyle } from '../maps/petCareStyle';
+import { warmUpLocation } from '../booking/geocoding';
 
 const FOOTER_HEIGHT = 196;
 
@@ -51,9 +52,10 @@ export function WalkConfigScreen() {
   const slot = slots.find((option) => option.key === slotKey) ?? slots[0];
   const fare = walkFare(minutes, timing);
 
-  // Warm up the restyled map so the pickup map paints straight away.
+  // Warm up the restyled map and the GPS so the pickup map opens on the user straight away.
   useEffect(() => {
     void loadPetCareStyle();
+    void warmUpLocation();
   }, []);
 
   // Longer walks make for a happier, faster tail (8 → 18 fps) while this screen is up.
