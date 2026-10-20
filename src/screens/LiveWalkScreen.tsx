@@ -41,7 +41,7 @@ import { NoActiveWalk } from './WalkerEnRouteScreen';
 import { WALKERS, type Walker } from '../data/careTeam';
 
 const CORGI = require('../../assets/corgi_mascot.png');
-const PARK_PHOTO = require('../../assets/corgi_dashboard.png');
+const PARK_PHOTO = require('../../assets/corgi_dashboard.jpg');
 
 const TICK_MS = 250;
 const COMPLETE_DELAY_MS = 650;

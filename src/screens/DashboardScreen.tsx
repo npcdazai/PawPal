@@ -360,7 +360,7 @@ export function DashboardScreen() {
 
           <View style={styles.highlight}>
             <Image
-              source={require('../../assets/corgi_dashboard.png')}
+              source={require('../../assets/corgi_dashboard.jpg')}
               style={styles.highlightThumb}
               resizeMode="cover"
               accessibilityIgnoresInvertColors
