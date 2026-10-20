@@ -1,7 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  Animated,
-  Easing,
   Image,
   Linking,
   Pressable,
@@ -12,47 +10,48 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path } from 'react-native-svg';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
 import { Icon } from '../components/Icon';
 import { Avatar } from '../components/Avatar';
 import { ActionSheet } from '../components/ActionSheet';
 import { Toast, useToast } from '../components/Toast';
-import { MascotDockSlot } from '../mascot/MascotDockSlot';
 import { useMascotActions } from '../mascot/MascotProvider';
-import { NATIVE_DRIVER } from '../theme/motion';
 import { useAppNavigation } from '../navigation/useAppNavigation';
-import { useBookings, useTrackedWalk } from '../booking/BookingsProvider';
-import { NeighborhoodMap } from '../booking/NeighborhoodMap';
-import { PulseRings } from '../booking/PulseRings';
+import { useBookings, useTrackedWalk, type WalkBooking } from '../booking/BookingsProvider';
 import { WalkerChatSheet } from '../booking/WalkerChatSheet';
 import { WalkCompleteModal } from '../booking/WalkCompleteModal';
 import { MapPill, PulsingDot, RoundIconButton, TrackingTopBar } from '../booking/trackingUi';
+import { eventMinute, formatClockTime, formatCountdown, liveWalkStatus } from '../booking/liveWalk';
+import { boundsOf, headingAlong, pointAlong, splitLine, type GeoLine } from '../booking/geo';
+import { PICKUP_PLACES } from '../booking/pickupPlaces';
+import { useParkLoop } from '../booking/walkRoutes';
+import { MapLine, MapMarker, PawMap } from '../maps/PawMap';
 import {
-  eventMinute,
-  formatClockTime,
-  formatCountdown,
-  liveWalkStatus,
-  realMsFor,
-} from '../booking/liveWalk';
-import { PARK_LOOP, PARK_LOOP_FOCUS, pointAt, routeOffset, splitRoute, toSvgPath } from '../booking/walkRoutes';
-import { MAP_SIZE } from '../booking/pickupPlaces';
+  BARNABY_PIN_OFFSET,
+  BarnabyPin,
+  HomeDot,
+  MILESTONE_OFFSET,
+  MilestonePin,
+  useFrameClock,
+} from '../maps/MapPins';
 import { NoActiveWalk } from './WalkerEnRouteScreen';
-import { WALKERS } from '../data/careTeam';
+import { WALKERS, type Walker } from '../data/careTeam';
 
 const CORGI = require('../../assets/corgi_mascot.png');
 const PARK_PHOTO = require('../../assets/corgi_dashboard.png');
 
-/** The map-pin slot. */
-const PIN = 68;
-const MILESTONE = 34;
 const TICK_MS = 250;
 const COMPLETE_DELAY_MS = 650;
 const SAFETY_LINE = '+18005550199';
 const EMERGENCY_VET = '+14155550199';
+/** Room for the LIVE WALK pill above and Barnaby's pin wherever he is on the loop. */
+const MAP_PADDING = { top: 150, right: 60, bottom: 72, left: 60 };
+/** Coral dashes for the way home. */
+const RETURN_DASH = [2, 2] as const;
 
-interface MapMarker {
+/** A milestone dropped on the trail at fraction `at` of the loop. */
+interface TrailMarker {
   key: string;
   at: number;
   emoji: string;
@@ -70,10 +69,8 @@ export function LiveWalkScreen() {
   const { message, show } = useToast();
 
   const [now, setNow] = useState(() => Date.now());
-  const [pan] = useState(() => new Animated.ValueXY({ x: 0, y: 0 }));
-  const [progress] = useState(() => new Animated.Value(0));
   const [openMarker, setOpenMarker] = useState<string | null>(null);
-  const [manualMarkers, setManualMarkers] = useState<MapMarker[]>([]);
+  const [manualMarkers, setManualMarkers] = useState<TrailMarker[]>([]);
   const [chatOpen, setChatOpen] = useState(false);
   const [sosOpen, setSosOpen] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
@@ -97,25 +94,10 @@ export function LiveWalkScreen() {
     return () => setWalking(false);
   }, [setWalking]);
 
-  // Move the walk pin (and Barnaby with it) smoothly along the loop on the native thread.
-  const startedAt = booking?.startedAt;
-  const minutes = booking?.minutes;
-  useEffect(() => {
-    if (!startedAt || !minutes) return undefined;
-    const status = liveWalkStatus({ minutes, startedAt, extraWater: 0 }, Date.now());
-    progress.setValue(status.progress);
-    const walk = Animated.timing(progress, {
-      toValue: 1,
-      duration: realMsFor(status.remainingSec),
-      easing: Easing.linear,
-      useNativeDriver: NATIVE_DRIVER,
-    });
-    walk.start();
-    return () => walk.stop();
-  }, [startedAt, minutes, progress]);
-
-  const offset = useMemo(() => routeOffset(PARK_LOOP, progress), [progress]);
-  const status = booking ? liveWalkStatus(booking, now) : null;
+  // The walk's real GeoJSON loop (OSRM foot profile); telemetry follows its length.
+  const pickup = booking?.pickup ?? PICKUP_PLACES.home.lngLat;
+  const loop = useParkLoop(pickup);
+  const status = booking ? liveWalkStatus(booking, now, loop.lengthKm) : null;
 
   // Face the direction of travel; stop walking once home.
   const progressNow = status?.progress ?? 0;
@@ -125,16 +107,15 @@ export function LiveWalkScreen() {
       setWalking(false);
       return;
     }
-    const ahead = pointAt(PARK_LOOP, Math.min(1, progressNow + 0.01));
-    const here = pointAt(PARK_LOOP, progressNow);
-    const dx = ahead.x - here.x;
-    if (Math.abs(dx) < 0.5) return;
-    const heading = dx > 0 ? 1 : -1;
+    const heading = headingAlong(loop, progressNow);
     if (heading !== lastHeading.current) {
       lastHeading.current = heading;
       face(heading);
     }
-  }, [progressNow, done, face, setWalking]);
+  }, [loop, progressNow, done, face, setWalking]);
+
+  // Walked trail (solid blue) and the way home (dashed coral), split at Barnaby.
+  const { done: trail, rest } = splitLine(loop, progressNow);
 
   if (!booking || !status) {
     return <NoActiveWalk onBack={() => go('exitTracking')} />;
@@ -142,15 +123,13 @@ export function LiveWalkScreen() {
 
   const walker = WALKERS[booking.walkerId];
   const firstName = walker.name.split(' ')[0];
-  const { done: trail, rest } = splitRoute(PARK_LOOP, status.progress);
-  const home = PARK_LOOP.points[0];
   const mapHeight = Math.round(windowHeight * 0.47);
   const percent = Math.round(status.progress * 100);
   const startMs = booking.startedAt ?? now;
   const returnMs = startMs + booking.minutes * 60 * 1000;
   const photoTaken = status.reached.some((event) => event.kind === 'photo');
 
-  const markers: MapMarker[] = [
+  const markers: TrailMarker[] = [
     ...status.reached
       .filter((event) => event.pin)
       .map((event) => ({
@@ -197,107 +176,47 @@ export function LiveWalkScreen() {
         onInfo={() => show('Live GPS route · blue = walked, coral = way home')}
       />
 
-      <View
-        style={[styles.mapArea, { height: mapHeight }]}
-        onLayout={(event) => {
-          const { width, height } = event.nativeEvent.layout;
-          pan.setValue({ x: width / 2 - PARK_LOOP_FOCUS.x, y: height / 2 - PARK_LOOP_FOCUS.y });
-        }}
-      >
-        <View style={StyleSheet.absoluteFill}>
-          <NeighborhoodMap pan={pan} showWalkers={false}>
-            <Svg pointerEvents="none" style={styles.layer} width={MAP_SIZE.width} height={MAP_SIZE.height}>
-              <Path
-                d={toSvgPath(rest)}
-                stroke={colors.coral}
-                strokeWidth={4}
-                strokeDasharray="10 8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                fill="none"
-              />
-              <Path
-                d={toSvgPath(trail)}
-                stroke={colors.card}
-                strokeWidth={9}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                fill="none"
-              />
-              <Path
-                d={toSvgPath(trail)}
-                stroke={colors.primary}
-                strokeWidth={5}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                fill="none"
-              />
-            </Svg>
+      <View style={[styles.mapArea, { height: mapHeight }]}>
+        <PawMap
+          initialCenter={pickup}
+          initialBounds={{ bounds: boundsOf(loop.coords), padding: MAP_PADDING }}
+          style={StyleSheet.absoluteFill}
+        >
+          <MapLine id="walk-return" coords={rest} color={colors.coral} width={3.5} dash={RETURN_DASH} />
+          <MapLine id="walk-trail" coords={trail} color={colors.primary} width={5} />
 
-            {/* Home */}
-            <View pointerEvents="none" style={[styles.homeDot, { left: home.x - 16, top: home.y - 16 }]}>
-              <View style={styles.homeDotInner} />
-            </View>
+          <MapMarker lngLat={pickup} anchor="center">
+            <HomeDot />
+          </MapMarker>
 
-            {/* Milestones dropped along the trail */}
-            {markers.map((marker) => {
-              const point = pointAt(PARK_LOOP, marker.at);
-              const open = openMarker === marker.key;
-              return (
-                <View
-                  key={marker.key}
-                  style={[styles.markerSlot, { left: point.x - MILESTONE / 2, top: point.y - MILESTONE / 2 }]}
-                >
-                  {open ? (
-                    <View style={styles.tooltip} pointerEvents="none">
-                      <Text style={styles.tooltipText} numberOfLines={1}>
-                        {marker.label}
-                      </Text>
-                    </View>
-                  ) : null}
-                  <Pressable
-                    onPress={() => setOpenMarker(open ? null : marker.key)}
-                    accessibilityRole="button"
-                    aria-label={marker.label}
-                    style={({ pressed }) => [styles.marker, pressed && styles.pressed]}
-                  >
-                    <Text style={styles.markerEmoji}>{marker.emoji}</Text>
-                  </Pressable>
-                </View>
-              );
-            })}
+          {/* Milestones dropped at their exact spot on the trail */}
+          {markers.map((marker) => {
+            const open = openMarker === marker.key;
+            return (
+              <MapMarker
+                key={marker.key}
+                lngLat={pointAlong(loop, marker.at)}
+                anchor="bottom"
+                offset={MILESTONE_OFFSET}
+              >
+                <MilestonePin
+                  emoji={marker.emoji}
+                  label={marker.label}
+                  open={open}
+                  onPress={() => setOpenMarker(open ? null : marker.key)}
+                />
+              </MapMarker>
+            );
+          })}
 
-            {/* Barnaby's map-pin slot travels the route with the pin, so he can't drift off it. */}
-            <Animated.View
-              pointerEvents="box-none"
-              style={[
-                styles.pinSlot,
-                {
-                  left: home.x - PIN / 2,
-                  top: home.y - PIN / 2,
-                  transform: [{ translateX: offset.x }, { translateY: offset.y }],
-                },
-              ]}
-            >
-              <PulseRings size={PIN} colors={[colors.primary, colors.primary]} scaleTo={1.6} />
-              <MascotDockSlot variant="map-pin" active={!completed} style={styles.pinShadow} />
-              <Avatar
-                initials={walker.initials}
-                tint={colors.card}
-                ink={colors.primary}
-                size={30}
-                style={styles.walkerBadge}
-              />
-              <View pointerEvents="none" style={styles.pinLabelSlot}>
-                <View style={styles.pinLabel}>
-                  <Text style={styles.pinLabelText} numberOfLines={1}>
-                    Barnaby <Text style={styles.pinStar}>★</Text> with {walker.shortName}
-                  </Text>
-                </View>
-              </View>
-            </Animated.View>
-          </NeighborhoodMap>
-        </View>
+          <BarnabyOnLoop
+            loop={loop}
+            booking={booking}
+            walker={walker}
+            running={!status.done}
+            active={!completed}
+          />
+        </PawMap>
 
         <View style={styles.liveRow} pointerEvents="none">
           <MapPill style={styles.livePill}>
@@ -542,6 +461,49 @@ export function LiveWalkScreen() {
   );
 }
 
+/**
+ * Barnaby (WALKING) with his walker's badge, advanced along the loop every
+ * animation frame. Separate so only the marker re-renders per frame.
+ */
+function BarnabyOnLoop({
+  loop,
+  booking,
+  walker,
+  running,
+  active,
+}: {
+  loop: GeoLine;
+  booking: WalkBooking;
+  walker: Walker;
+  running: boolean;
+  active: boolean;
+}) {
+  const now = useFrameClock(running);
+  const { progress } = liveWalkStatus(booking, now, loop.lengthKm);
+  return (
+    <MapMarker lngLat={pointAlong(loop, progress)} anchor="bottom" offset={BARNABY_PIN_OFFSET}>
+      <BarnabyPin
+        active={active}
+        ringColor={colors.primary}
+        label={
+          <Text style={styles.pinLabelText} numberOfLines={1}>
+            Barnaby <Text style={styles.pinStar}>★</Text> with {walker.shortName}
+          </Text>
+        }
+        badge={
+          <Avatar
+            initials={walker.initials}
+            tint={colors.card}
+            ink={colors.primary}
+            size={30}
+            style={styles.walkerBadge}
+          />
+        }
+      />
+    </MapMarker>
+  );
+}
+
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
@@ -563,92 +525,11 @@ const styles = StyleSheet.create({
   },
   mapArea: {
     overflow: 'hidden',
-    backgroundColor: '#F1F0EB',
-  },
-  layer: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-  },
-  homeDot: {
-    position: 'absolute',
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-    ...shadows.primary,
-  },
-  homeDotInner: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 3,
-    borderColor: colors.card,
-  },
-  markerSlot: {
-    position: 'absolute',
-    width: MILESTONE,
-    height: MILESTONE,
-    alignItems: 'center',
-  },
-  marker: {
-    width: MILESTONE,
-    height: MILESTONE,
-    borderRadius: MILESTONE / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.card,
-    ...shadows.float,
-  },
-  markerEmoji: {
-    fontSize: 16,
-  },
-  tooltip: {
-    position: 'absolute',
-    bottom: MILESTONE + 6,
-    width: 170,
-    alignItems: 'center',
-    paddingVertical: 6,
-    borderRadius: radii.full,
-    backgroundColor: colors.ink,
-  },
-  tooltipText: {
-    fontFamily: fonts.semibold,
-    fontSize: 12,
-    color: colors.onPrimary,
-  },
-  pinSlot: {
-    position: 'absolute',
-    width: PIN,
-    height: PIN,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pinShadow: {
-    borderRadius: PIN / 2,
-    ...shadows.float,
+    backgroundColor: '#FFFDF9',
   },
   walkerBadge: {
-    position: 'absolute',
-    right: -6,
-    bottom: 0,
     borderWidth: 2.5,
     borderColor: colors.primary,
-  },
-  pinLabelSlot: {
-    position: 'absolute',
-    top: PIN + 8,
-    left: (PIN - 200) / 2,
-    width: 200,
-    alignItems: 'center',
-  },
-  pinLabel: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: radii.full,
-    backgroundColor: colors.ink,
   },
   pinLabelText: {
     fontFamily: fonts.bold,

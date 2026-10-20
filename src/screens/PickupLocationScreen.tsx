@@ -1,7 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {
   ActivityIndicator,
-  Animated,
   Image,
   Keyboard,
   Pressable,
@@ -17,29 +16,73 @@ import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
 import { Icon } from '../components/Icon';
 import { PrimaryButton } from '../components/Button';
-import { MascotDockSlot } from '../mascot/MascotDockSlot';
+import { Toast, useToast } from '../components/Toast';
 import { useMascotActions } from '../mascot/MascotProvider';
-import { NATIVE_DRIVER } from '../theme/motion';
 import { useAppNavigation } from '../navigation/useAppNavigation';
 import { useBookings } from '../booking/BookingsProvider';
-import { NeighborhoodMap } from '../booking/NeighborhoodMap';
-import { PulseRings } from '../booking/PulseRings';
 import { FindingWalkersModal } from '../booking/FindingWalkersModal';
 import { formatMoney, walkFare } from '../booking/walkPlans';
 import { PICKUP_OTP } from '../booking/liveWalk';
+import { offsetMeters, type LngLat } from '../booking/geo';
+import { currentPosition, reverseGeocode } from '../booking/geocoding';
 import {
   PICKUP_PLACES,
   SAVED_PLACES,
   searchPlaces,
   type PlaceKey,
 } from '../booking/pickupPlaces';
+import { MapMarker, PawMap } from '../maps/PawMap';
+import type { PawMapHandle } from '../maps/types';
+import {
+  BARNABY_PIN_OFFSET,
+  BarnabyPin,
+  NEARBY_WALKER_OFFSET,
+  NearbyWalkerPin,
+} from '../maps/MapPins';
 import type { WalkerId } from '../data/careTeam';
 
-/** The map-pin slot. */
-const PIN_SIZE = 68;
-const PIN_LABEL_WIDTH = 160;
-const GPS_LOCK_MS = 900;
 const SEARCH_BLUR_GRACE_MS = 180;
+const PLACE_ZOOM = 16;
+const FLY_MS = 900;
+
+/** Walkers pinging the dispatch radar around the pickup while Screen 7 searches. */
+const NEARBY_WALKERS = [
+  { initials: 'MT', label: '⭐ 4.9 Marcus', tint: colors.primary, east: -230, north: 170 },
+  { initials: 'ER', label: '⭐ 5.0 Elena', tint: colors.coral, east: 240, north: 200 },
+  { initials: 'DK', label: '⭐ 4.8 David', tint: colors.amber, east: 70, north: -240 },
+] as const;
+
+/** Where the walker meets Barnaby: a saved place, GPS fix or dropped pin. */
+interface PickupSelection {
+  key: PlaceKey;
+  lngLat: LngLat;
+  line1: string;
+  line2: string;
+}
+
+const selectionFor = (key: PlaceKey): PickupSelection => {
+  const { lngLat, line1, line2 } = PICKUP_PLACES[key];
+  return { key, lngLat, line1, line2 };
+};
+
+/** The live map centre, observed by Barnaby's pin without re-rendering the screen. */
+function createCenterStore(initial: LngLat) {
+  let center = initial;
+  const listeners = new Set<() => void>();
+  return {
+    get: () => center,
+    set: (next: LngLat) => {
+      center = next;
+      listeners.forEach((listener) => listener());
+    },
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+}
 
 /** Screen 6 — pick where the walker collects Barnaby; Screen 7 opens on top. */
 export function PickupLocationScreen() {
@@ -48,8 +91,9 @@ export function PickupLocationScreen() {
   const { go } = useAppNavigation();
   const { navigate, focusField, blurField, glance } = useMascotActions();
   const { draft, addBooking } = useBookings();
+  const { message, show } = useToast();
 
-  const [placeKey, setPlaceKey] = useState<PlaceKey>('home');
+  const [selection, setSelection] = useState<PickupSelection>(() => selectionFor('home'));
   const [spotEdits, setSpotEdits] = useState<Partial<Record<PlaceKey, string>>>({});
   const [editingSpot, setEditingSpot] = useState(false);
   const [pickupNotes, setPickupNotes] = useState('');
@@ -57,18 +101,17 @@ export function PickupLocationScreen() {
   const [searchFocused, setSearchFocused] = useState(false);
   const [locating, setLocating] = useState(false);
   const [searching, setSearching] = useState(false);
-  const [viewport, setViewport] = useState({ width: 0, height: 0 });
-  const [pan] = useState(() => new Animated.ValueXY({ x: 0, y: 0 }));
-  const timers = useRef<{ blur?: ReturnType<typeof setTimeout>; gps?: ReturnType<typeof setTimeout> }>({});
+  const [center] = useState(() => createCenterStore(PICKUP_PLACES.home.lngLat));
+  const mapRef = useRef<PawMapHandle>(null);
+  const geocodeSeq = useRef(0);
+  const timers = useRef<{ blur?: ReturnType<typeof setTimeout> }>({});
 
   useEffect(() => {
     const pending = timers.current;
-    return () => {
-      clearTimeout(pending.blur);
-      clearTimeout(pending.gps);
-    };
+    return () => clearTimeout(pending.blur);
   }, []);
 
+  const placeKey = selection.key;
   const place = PICKUP_PLACES[placeKey];
   const spot = spotEdits[placeKey] ?? place.spot;
   const fare = walkFare(draft.minutes, draft.timing);
@@ -76,32 +119,45 @@ export function PickupLocationScreen() {
   const mapHeight = Math.round(windowHeight * 0.48);
   const results = searchPlaces(query);
 
-  const panTarget = (key: PlaceKey, size = viewport) => ({
-    x: size.width / 2 - PICKUP_PLACES[key].x,
-    y: size.height / 2 - PICKUP_PLACES[key].y,
-  });
+  const flyTo = (lngLat: LngLat) => mapRef.current?.flyTo(lngLat, PLACE_ZOOM, FLY_MS);
 
   const selectPlace = (key: PlaceKey) => {
-    setPlaceKey(key);
+    geocodeSeq.current += 1;
+    setSelection(selectionFor(key));
     setEditingSpot(false);
-    Animated.spring(pan, {
-      toValue: panTarget(key),
-      damping: 20,
-      stiffness: 110,
-      mass: 1,
-      useNativeDriver: NATIVE_DRIVER,
-    }).start();
+    flyTo(PICKUP_PLACES[key].lngLat);
     glance();
   };
 
-  const locateWithGps = () => {
+  /** A position without a saved address: show it at once, then fill in the street. */
+  const pinAt = (key: 'gps' | 'pin', lngLat: LngLat) => {
+    geocodeSeq.current += 1;
+    const seq = geocodeSeq.current;
+    setSelection({ key, lngLat, line1: 'Finding the address…', line2: PICKUP_PLACES[key].line2 });
+    setEditingSpot(false);
+    glance();
+    reverseGeocode(lngLat).then((lines) => {
+      if (seq !== geocodeSeq.current) return;
+      setSelection((current) => ({
+        ...current,
+        line1: lines?.line1 || PICKUP_PLACES[key].line1,
+        line2: lines?.line2 || 'San Francisco',
+      }));
+    });
+  };
+
+  const locateWithGps = async () => {
     if (locating) return;
     setLocating(true);
-    clearTimeout(timers.current.gps);
-    timers.current.gps = setTimeout(() => {
-      setLocating(false);
+    const here = await currentPosition();
+    setLocating(false);
+    if (here) {
+      pinAt('gps', here);
+      flyTo(here);
+    } else {
+      show('Location unavailable — using your last known spot');
       selectPlace('gps');
-    }, GPS_LOCK_MS);
+    }
   };
 
   const chooseResult = (key: PlaceKey) => {
@@ -123,7 +179,8 @@ export function PickupLocationScreen() {
       total: fare.total,
       placeKey,
       placeLabel: place.label,
-      address: place.line1,
+      address: selection.line1,
+      pickup: selection.lngLat,
       walkerId,
       otp: PICKUP_OTP,
       etaMinutes,
@@ -150,46 +207,41 @@ export function PickupLocationScreen() {
         </View>
       </View>
 
-      {/* Map viewport with Barnaby's pin fixed at the centre */}
-      <View
-        style={[styles.mapArea, { height: mapHeight }]}
-        onLayout={(event) => {
-          const { width, height } = event.nativeEvent.layout;
-          setViewport({ width, height });
-          pan.setValue(panTarget(placeKey, { width, height }));
-        }}
-      >
-        <View style={StyleSheet.absoluteFill}>
-          <NeighborhoodMap pan={pan} />
-          {viewport.width > 0 ? (
-            <View
-              pointerEvents="box-none"
-              style={[
-                styles.pin,
-                { left: viewport.width / 2 - PIN_SIZE / 2, top: viewport.height / 2 - PIN_SIZE / 2 },
-              ]}
-            >
-              <PulseRings size={PIN_SIZE} colors={[colors.coral, colors.coral]} scaleTo={1.8} />
-              <View pointerEvents="none" style={styles.pinTip} />
-              {/* Barnaby walks out of the pin and into the search dialog. */}
-              <MascotDockSlot variant="map-pin" active={!searching} style={styles.pinShadow} />
-              <View pointerEvents="none" style={styles.pinLabelSlot}>
-                <View style={styles.pinLabel}>
-                  <Text style={styles.pinLabelText} numberOfLines={1}>
-                    Pickup Location
-                  </Text>
-                </View>
-              </View>
-            </View>
-          ) : null}
-        </View>
+      {/* Live map: drag to drop the pin anywhere, or fly to a saved place */}
+      <View style={[styles.mapArea, { height: mapHeight }]}>
+        <PawMap
+          ref={mapRef}
+          initialCenter={selection.lngLat}
+          initialZoom={PLACE_ZOOM}
+          interactive={!searching}
+          onCameraChange={center.set}
+          onCameraIdle={(lngLat, byUser) => {
+            if (byUser) pinAt('pin', lngLat);
+          }}
+          style={StyleSheet.absoluteFill}
+        >
+          {/* Barnaby walks out of the pin and into the search dialog. */}
+          <PickupPin center={center} active={!searching} />
+          {searching
+            ? NEARBY_WALKERS.map((walker) => (
+                <MapMarker
+                  key={walker.initials}
+                  lngLat={offsetMeters(selection.lngLat, walker.east, walker.north)}
+                  anchor="bottom"
+                  offset={NEARBY_WALKER_OFFSET}
+                >
+                  <NearbyWalkerPin initials={walker.initials} label={walker.label} tint={walker.tint} />
+                </MapMarker>
+              ))
+            : null}
+        </PawMap>
 
         {/* Floating search */}
         <View style={styles.searchRow} pointerEvents="box-none">
           <View style={[styles.searchBox, searchFocused && styles.searchBoxFocused]}>
             <Icon name="search" size={20} color={colors.primary} />
             <TextInput
-              value={searchFocused ? query : place.line1}
+              value={searchFocused ? query : selection.line1}
               onChangeText={setQuery}
               placeholder="Search park, street, or landmark..."
               placeholderTextColor={colors.placeholder}
@@ -304,8 +356,8 @@ export function PickupLocationScreen() {
               <Icon name={place.icon} size={22} color={colors.primary} />
             </View>
             <View style={styles.flex}>
-              <Text style={styles.addressLine}>{place.line1}</Text>
-              <Text style={styles.meta}>{place.line2}</Text>
+              <Text style={styles.addressLine}>{selection.line1}</Text>
+              <Text style={styles.meta}>{selection.line2}</Text>
               {editingSpot ? (
                 <TextInput
                   value={spot}
@@ -380,7 +432,19 @@ export function PickupLocationScreen() {
           onDone={finishBooking}
         />
       ) : null}
+
+      <Toast message={message} bottomOffset={120} />
     </SafeAreaView>
+  );
+}
+
+/** Barnaby's map pin, held at the map centre while the map moves underneath. */
+function PickupPin({ center, active }: { center: ReturnType<typeof createCenterStore>; active: boolean }) {
+  const lngLat = useSyncExternalStore(center.subscribe, center.get);
+  return (
+    <MapMarker lngLat={lngLat} anchor="bottom" offset={BARNABY_PIN_OFFSET}>
+      <BarnabyPin active={active} label="Pickup Location" />
+    </MapMarker>
   );
 }
 
@@ -439,46 +503,7 @@ const styles = StyleSheet.create({
   },
   mapArea: {
     overflow: 'hidden',
-    backgroundColor: '#F1F0EB',
-  },
-  pin: {
-    position: 'absolute',
-    width: PIN_SIZE,
-    height: PIN_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pinShadow: {
-    borderRadius: PIN_SIZE / 2,
-    ...shadows.float,
-  },
-  pinTip: {
-    position: 'absolute',
-    bottom: -9,
-    width: 16,
-    height: 16,
-    transform: [{ rotate: '45deg' }],
-    borderRadius: 3,
-    backgroundColor: colors.coral,
-  },
-  // Wider than the pin so the label stays on one line, centred under it.
-  pinLabelSlot: {
-    position: 'absolute',
-    top: PIN_SIZE + 14,
-    left: (PIN_SIZE - PIN_LABEL_WIDTH) / 2,
-    width: PIN_LABEL_WIDTH,
-    alignItems: 'center',
-  },
-  pinLabel: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: radii.full,
-    backgroundColor: colors.ink,
-  },
-  pinLabelText: {
-    fontFamily: fonts.semibold,
-    fontSize: 12,
-    color: colors.onPrimary,
+    backgroundColor: '#FFFDF9',
   },
   searchRow: {
     position: 'absolute',

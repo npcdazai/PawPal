@@ -1,4 +1,6 @@
-export type PlaceKey = 'home' | 'park' | 'office' | 'dogRun' | 'library' | 'gps';
+import { offsetMeters, type LngLat } from './geo';
+
+export type PlaceKey = 'home' | 'park' | 'office' | 'dogRun' | 'library' | 'gps' | 'pin';
 
 export interface PickupPlace {
   key: PlaceKey;
@@ -8,13 +10,12 @@ export interface PickupPlace {
   line1: string;
   line2: string;
   spot: string;
-  /** Position on the illustrated map, in map units. */
-  x: number;
-  y: number;
+  /** Where the walker meets Barnaby: real San Francisco coordinates. */
+  lngLat: LngLat;
 }
 
-/** Size of the illustrated neighbourhood map, in map units (1 unit = 1 dp). */
-export const MAP_SIZE = { width: 1100, height: 1100 } as const;
+/** Sarah & Barnaby's home in the Lower Haight; walks loop through the parks nearby. */
+const HOME: LngLat = [-122.42941, 37.77218];
 
 export const PICKUP_PLACES: Record<PlaceKey, PickupPlace> = {
   home: {
@@ -22,66 +23,71 @@ export const PICKUP_PLACES: Record<PlaceKey, PickupPlace> = {
     emoji: '🏠',
     icon: 'home',
     label: 'Home',
-    line1: '742 Evergreen Terrace',
-    line2: 'Apt 4B • Springfield District',
+    line1: 'Haight St & Webster St',
+    line2: 'Apt 4B • Lower Haight, San Francisco',
     spot: 'Front Porch Gate',
-    x: 520,
-    y: 560,
+    lngLat: HOME,
   },
   park: {
     key: 'park',
     emoji: '🌳',
     icon: 'park',
     label: 'Elm Creek Park',
-    line1: 'Elm Creek Park',
-    line2: 'North Gate • Elm Creek Trail',
-    spot: 'Main Fountain',
-    x: 760,
-    y: 300,
+    line1: 'Duboce Park dog play area',
+    line2: 'Duboce Ave & Steiner St • San Francisco',
+    spot: 'Steiner St entrance',
+    lngLat: [-122.43195, 37.7696],
   },
   office: {
     key: 'office',
     emoji: '🏢',
     icon: 'business',
-    label: 'Work Office',
+    label: 'Office',
     line1: '1200 Market Street',
-    line2: 'Suite 400 • Downtown',
+    line2: 'Suite 400 • Civic Center, San Francisco',
     spot: 'Lobby Entrance',
-    x: 300,
-    y: 740,
+    lngLat: [-122.4148, 37.7783],
   },
   dogRun: {
     key: 'dogRun',
     emoji: '🐕',
     icon: 'pets',
-    label: 'Riverside Dog Run',
-    line1: 'Riverside Dog Run',
-    line2: 'Riverwalk • Springfield',
-    spot: 'Double-gate Entry',
-    x: 230,
-    y: 930,
+    label: 'Alamo Square Dog Run',
+    line1: 'Alamo Square Park',
+    line2: 'Hayes St & Steiner St • San Francisco',
+    spot: 'Off-leash area gate',
+    lngLat: [-122.4327, 37.7757],
   },
   library: {
     key: 'library',
     emoji: '📚',
     icon: 'local-library',
-    label: 'Springfield Library',
-    line1: '88 Library Lane',
-    line2: 'Civic Center • Springfield',
+    label: 'Park Branch Library',
+    line1: 'Page St near Cole St',
+    line2: 'Haight-Ashbury • San Francisco',
     spot: 'Bike Racks',
-    x: 840,
-    y: 660,
+    lngLat: [-122.4498, 37.77],
   },
+  // GPS and dropped pins are filled in from the device location / the map centre.
   gps: {
     key: 'gps',
     emoji: '📍',
     icon: 'my-location',
     label: 'Current Location',
-    line1: 'Near 750 Evergreen Terrace',
-    line2: 'GPS • accurate to 12 m',
+    line1: 'Near Haight St & Webster St',
+    line2: 'GPS • approximate',
     spot: 'Where you are now',
-    x: 580,
-    y: 610,
+    lngLat: offsetMeters(HOME, 45, -30),
+  },
+  pin: {
+    key: 'pin',
+    emoji: '📌',
+    icon: 'place',
+    label: 'Dropped Pin',
+    line1: 'Dropped pin',
+    line2: 'Move the map to adjust',
+    spot: 'Meet at the pin',
+    lngLat: HOME,
   },
 };
 
@@ -98,3 +104,22 @@ export function searchPlaces(query: string): PickupPlace[] {
       place.line2.toLowerCase().includes(needle)
   );
 }
+
+/** The matched walker sets off ~800 m (as the crow flies) north-west of the pickup. */
+export const walkerStartFor = (pickup: LngLat): LngLat => offsetMeters(pickup, -650, 450);
+
+/**
+ * The walk itself: from the pickup through Elm Creek (Duboce) Park, up to
+ * Alamo Square and back — waypoints for the routing engine.
+ */
+export const parkLoopWaypoints = (pickup: LngLat): LngLat[] => [
+  pickup,
+  [-122.43195, 37.7696], // Duboce Park, Steiner St entrance
+  [-122.4353, 37.76925], // Duboce Park, Scott St end
+  [-122.434, 37.77015], // Duboce Park, north lawn
+  [-122.4327, 37.7757], // Alamo Square, Hayes & Steiner
+  [-122.43465, 37.7764], // Alamo Square, hilltop
+  pickup,
+];
+
+export const isHome = (lngLat: LngLat) => lngLat[0] === HOME[0] && lngLat[1] === HOME[1];

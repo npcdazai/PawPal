@@ -24,8 +24,15 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow PawPal to use your location to set Barnaby's pickup spot."
+        }
+      ],
       "expo-font",
-      "expo-router"
+      "expo-router",
+      "@maplibre/maplibre-react-native"
     ]
   }
 }

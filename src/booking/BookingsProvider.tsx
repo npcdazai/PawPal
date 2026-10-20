@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import type { WalkerId } from '../data/careTeam';
+import type { LngLat } from './geo';
 import type { PlaceKey } from './pickupPlaces';
 import { DEFAULT_MINUTES, type WalkMinutes, type WalkTiming } from './walkPlans';
 
@@ -27,6 +28,8 @@ export interface WalkBooking {
   placeKey: PlaceKey;
   placeLabel: string;
   address: string;
+  /** Where the walker collects Barnaby; walk routes start and end here. */
+  pickup: LngLat;
   walkerId: WalkerId;
   /** Handover code the walker enters at pickup. */
   otp: string;

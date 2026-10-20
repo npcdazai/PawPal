@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Image, LayoutAnimation, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -23,6 +23,7 @@ import {
   type WalkTiming,
 } from '../booking/walkPlans';
 import { isWalkerId } from '../data/careTeam';
+import { loadPetCareStyle } from '../maps/petCareStyle';
 
 const FOOTER_HEIGHT = 196;
 
@@ -49,6 +50,11 @@ export function WalkConfigScreen() {
 
   const slot = slots.find((option) => option.key === slotKey) ?? slots[0];
   const fare = walkFare(minutes, timing);
+
+  // Warm up the restyled map so the pickup map paints straight away.
+  useEffect(() => {
+    void loadPetCareStyle();
+  }, []);
 
   // Longer walks make for a happier, faster tail (8 → 18 fps) while this screen is up.
   useFocusEffect(

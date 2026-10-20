@@ -1,7 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Animated,
-  Easing,
   Linking,
   Platform,
   Pressable,
@@ -12,7 +10,6 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path } from 'react-native-svg';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
 import { Icon } from '../components/Icon';
@@ -21,25 +18,31 @@ import { Badge } from '../components/Badge';
 import { PrimaryButton } from '../components/Button';
 import { ActionSheet } from '../components/ActionSheet';
 import { Toast, useToast } from '../components/Toast';
-import { MascotDockSlot } from '../mascot/MascotDockSlot';
 import { useMascotActions } from '../mascot/MascotProvider';
-import { NATIVE_DRIVER } from '../theme/motion';
 import { useAppNavigation } from '../navigation/useAppNavigation';
-import { useBookings, useTrackedWalk } from '../booking/BookingsProvider';
-import { NeighborhoodMap } from '../booking/NeighborhoodMap';
-import { PulseRings } from '../booking/PulseRings';
+import { useBookings, useTrackedWalk, type WalkBooking } from '../booking/BookingsProvider';
 import { WalkerChatSheet } from '../booking/WalkerChatSheet';
 import { MapPill, PulsingDot, RoundIconButton, TrackingTopBar } from '../booking/trackingUi';
-import { enRouteStatus, realMsFor } from '../booking/liveWalk';
-import { PICKUP_ROUTE, routeCenter, routeOffset, splitRoute, toSvgPath } from '../booking/walkRoutes';
-import { MAP_SIZE } from '../booking/pickupPlaces';
-import { WALKERS } from '../data/careTeam';
+import { enRouteStatus } from '../booking/liveWalk';
+import { bearingAlong, boundsOf, pointAlong, splitLine, type GeoLine } from '../booking/geo';
+import { PICKUP_PLACES, walkerStartFor } from '../booking/pickupPlaces';
+import { usePickupRoute } from '../booking/walkRoutes';
+import { MapLine, MapMarker, PawMap } from '../maps/PawMap';
+import {
+  BARNABY_PIN_OFFSET,
+  BarnabyPin,
+  WALKER_PIN_OFFSET,
+  WalkerPin,
+  useFrameClock,
+} from '../maps/MapPins';
+import { WALKERS, type Walker } from '../data/careTeam';
 
-/** The map-pin slot at Home. */
-const HOME_PIN = 68;
-const WALKER_PIN = 54;
 const START_DELAY_MS = 750;
 const MONO = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' });
+/** Room for the ETA pill above and the sheet's rounded top below. */
+const MAP_PADDING = { top: 150, right: 56, bottom: 64, left: 56 };
+/** Primary blue dashes: line-dasharray [2, 2]. */
+const ROUTE_DASH = [2, 2] as const;
 
 /** Screen 8 — walker heading to the pickup, with the handover OTP. */
 export function WalkerEnRouteScreen() {
@@ -52,8 +55,6 @@ export function WalkerEnRouteScreen() {
   const { message, show } = useToast();
 
   const [now, setNow] = useState(() => Date.now());
-  const [pan] = useState(() => new Animated.ValueXY({ x: 0, y: 0 }));
-  const [walkerProgress] = useState(() => new Animated.Value(0));
   const [chatOpen, setChatOpen] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -68,35 +69,16 @@ export function WalkerEnRouteScreen() {
     };
   }, []);
 
-  // Glide the walker pin from where they are now to the front door.
-  const matchedAt = booking?.matchedAt;
-  const etaMinutes = booking?.etaMinutes;
-  useEffect(() => {
-    if (!matchedAt || !etaMinutes) return undefined;
-    const status = enRouteStatus({ matchedAt, etaMinutes }, Date.now());
-    walkerProgress.setValue(status.progress);
-    const glide = Animated.timing(walkerProgress, {
-      toValue: 1,
-      duration: realMsFor(status.remainingSec),
-      easing: Easing.linear,
-      useNativeDriver: NATIVE_DRIVER,
-    });
-    glide.start();
-    return () => glide.stop();
-  }, [matchedAt, etaMinutes, walkerProgress]);
-
-  const walkerOffset = useMemo(() => routeOffset(PICKUP_ROUTE, walkerProgress), [walkerProgress]);
-  const heading = useMemo(() => headingFor(walkerProgress), [walkerProgress]);
+  // The walker's real street route (OSRM foot profile) from where they were matched.
+  const pickup = booking?.pickup ?? PICKUP_PLACES.home.lngLat;
+  const route = usePickupRoute(pickup);
 
   if (!booking) {
     return <NoActiveWalk onBack={() => go('exitTracking')} />;
   }
 
   const walker = WALKERS[booking.walkerId];
-  const status = enRouteStatus(booking, now);
-  const { rest } = splitRoute(PICKUP_ROUTE, status.progress);
-  const start = PICKUP_ROUTE.points[0];
-  const home = PICKUP_ROUTE.points[PICKUP_ROUTE.points.length - 1];
+  const status = enRouteStatus(booking, now, route.lengthKm);
   const mapHeight = Math.round(windowHeight * 0.5);
 
   const verifyAndStart = () => {
@@ -120,77 +102,25 @@ export function WalkerEnRouteScreen() {
         onInfo={() => show('Live GPS · your walker’s position updates every second')}
       />
 
-      <View
-        style={[styles.mapArea, { height: mapHeight }]}
-        onLayout={(event) => {
-          const { width, height } = event.nativeEvent.layout;
-          const center = routeCenter(PICKUP_ROUTE.points);
-          pan.setValue({ x: width / 2 - center.x, y: height / 2 - center.y + 20 });
-        }}
-      >
-        <View style={StyleSheet.absoluteFill}>
-          <NeighborhoodMap pan={pan} showWalkers={false}>
-            <Svg pointerEvents="none" style={styles.layer} width={MAP_SIZE.width} height={MAP_SIZE.height}>
-              <Path
-                d={toSvgPath(rest)}
-                stroke={colors.primary}
-                strokeWidth={5}
-                strokeDasharray="12 9"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                fill="none"
-              />
-            </Svg>
-
-            {/* Pickup pin: Barnaby waits here with his leash */}
-            <View
-              pointerEvents="box-none"
-              style={[
-                styles.homePin,
-                { left: home.x - HOME_PIN / 2, top: home.y - HOME_PIN / 2 },
-              ]}
-            >
-              <PulseRings size={HOME_PIN} colors={[colors.coral, colors.coral]} scaleTo={1.7} />
-              <MascotDockSlot variant="map-pin" style={styles.homeShadow} />
-              <View pointerEvents="none" style={styles.pickupTag}>
-                <Icon name="home" size={13} color={colors.onPrimary} />
-                <Text style={styles.pickupText}>Pickup</Text>
-              </View>
-            </View>
-
-            {/* Walker gliding toward home */}
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                styles.walkerPin,
-                {
-                  left: start.x - WALKER_PIN / 2,
-                  top: start.y - WALKER_PIN / 2,
-                  transform: [{ translateX: walkerOffset.x }, { translateY: walkerOffset.y }],
-                },
-              ]}
-            >
-              <View style={styles.walkerLabel}>
-                <View style={styles.walkerLabelDot} />
-                <Text style={styles.walkerLabelText}>{walker.name.split(' ')[0]} (Walker)</Text>
-              </View>
-              <View style={styles.walkerGlow} />
-              <Animated.View style={[styles.cone, { transform: [{ rotate: heading }] }]}>
-                <Icon name="navigation" size={22} color={colors.primary} />
-              </Animated.View>
-              <Avatar
-                initials={walker.initials}
-                tint={colors.card}
-                ink={colors.primary}
-                size={WALKER_PIN}
-                style={styles.walkerAvatar}
-              />
-              <View style={styles.walkingBadge}>
-                <Icon name="directions-walk" size={13} color={colors.onPrimary} />
-              </View>
-            </Animated.View>
-          </NeighborhoodMap>
-        </View>
+      <View style={[styles.mapArea, { height: mapHeight }]}>
+        <PawMap
+          initialCenter={pickup}
+          initialBounds={{ bounds: boundsOf([walkerStartFor(pickup), pickup]), padding: MAP_PADDING }}
+          style={StyleSheet.absoluteFill}
+        >
+          {/* Pickup pin: Barnaby waits here with his leash (IDLE_WAG; tap him to woof). */}
+          <MapMarker lngLat={pickup} anchor="bottom" offset={BARNABY_PIN_OFFSET}>
+            <BarnabyPin
+              label={
+                <>
+                  <Icon name="home" size={13} color={colors.onPrimary} />
+                  <Text style={styles.pickupText}>Pickup</Text>
+                </>
+              }
+            />
+          </MapMarker>
+          <WalkerOnRoute route={route} booking={booking} walker={walker} running={!status.arrived} />
+        </PawMap>
 
         <View style={styles.etaRow} pointerEvents="none">
           <MapPill>
@@ -322,18 +252,40 @@ export function WalkerEnRouteScreen() {
   );
 }
 
-/** Direction of travel for each route segment, held constant along the segment. */
-function headingFor(progress: Animated.Value) {
-  const { points, fractions } = PICKUP_ROUTE;
-  const inputRange: number[] = [];
-  const outputRange: string[] = [];
-  for (let i = 1; i < points.length; i += 1) {
-    const angle =
-      (Math.atan2(points[i].y - points[i - 1].y, points[i].x - points[i - 1].x) * 180) / Math.PI + 90;
-    inputRange.push(fractions[i - 1] + i * 1e-6, fractions[i] - 1e-4 + i * 1e-6);
-    outputRange.push(`${angle}deg`, `${angle}deg`);
-  }
-  return progress.interpolate({ inputRange, outputRange, extrapolate: 'clamp' });
+/**
+ * The walker gliding along the GeoJSON route every animation frame, with the
+ * dashed route ahead of them trimmed as they go. Kept separate so only this
+ * re-renders per frame, not the whole screen.
+ */
+function WalkerOnRoute({
+  route,
+  booking,
+  walker,
+  running,
+}: {
+  route: GeoLine;
+  booking: WalkBooking;
+  walker: Walker;
+  running: boolean;
+}) {
+  const now = useFrameClock(running);
+  const { progress } = enRouteStatus(booking, now, route.lengthKm);
+  // The line is trimmed in small steps; the marker itself moves every frame.
+  const trimAt = Math.floor(progress * 400) / 400;
+  const ahead = useMemo(() => splitLine(route, trimAt).rest, [route, trimAt]);
+
+  return (
+    <>
+      <MapLine id="walker-route" coords={ahead} color={colors.primary} width={4} dash={ROUTE_DASH} />
+      <MapMarker lngLat={pointAlong(route, progress)} anchor="bottom" offset={WALKER_PIN_OFFSET}>
+        <WalkerPin
+          initials={walker.initials}
+          name={walker.name.split(' ')[0]}
+          bearing={bearingAlong(route, progress)}
+        />
+      </MapMarker>
+    </>
+  );
 }
 
 /** Shown when tracking is opened with no walker on the way. */
@@ -365,100 +317,12 @@ const styles = StyleSheet.create({
   },
   mapArea: {
     overflow: 'hidden',
-    backgroundColor: '#F1F0EB',
-  },
-  layer: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-  },
-  homePin: {
-    position: 'absolute',
-    width: HOME_PIN,
-    height: HOME_PIN,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  homeShadow: {
-    borderRadius: HOME_PIN / 2,
-    ...shadows.float,
-  },
-  pickupTag: {
-    position: 'absolute',
-    bottom: -14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-    backgroundColor: colors.coralInk,
+    backgroundColor: '#FFFDF9',
   },
   pickupText: {
     fontFamily: fonts.bold,
     fontSize: 12,
     color: colors.onPrimary,
-  },
-  walkerPin: {
-    position: 'absolute',
-    width: WALKER_PIN,
-    height: WALKER_PIN,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  walkerGlow: {
-    position: 'absolute',
-    width: WALKER_PIN + 34,
-    height: WALKER_PIN + 34,
-    borderRadius: (WALKER_PIN + 34) / 2,
-    backgroundColor: 'rgba(41, 98, 255, 0.14)',
-  },
-  cone: {
-    position: 'absolute',
-    width: WALKER_PIN + 40,
-    height: WALKER_PIN + 40,
-    alignItems: 'center',
-  },
-  walkerAvatar: {
-    borderWidth: 3,
-    borderColor: colors.primary,
-  },
-  walkingBadge: {
-    position: 'absolute',
-    right: -4,
-    bottom: -2,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.coral,
-    borderWidth: 2,
-    borderColor: colors.card,
-  },
-  walkerLabel: {
-    position: 'absolute',
-    top: -34,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    width: 116,
-    justifyContent: 'center',
-    paddingVertical: 4,
-    borderRadius: radii.full,
-    backgroundColor: colors.card,
-    ...shadows.soft,
-  },
-  walkerLabelDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: colors.success,
-  },
-  walkerLabelText: {
-    fontFamily: fonts.bold,
-    fontSize: 11,
-    color: colors.ink,
   },
   etaRow: {
     position: 'absolute',

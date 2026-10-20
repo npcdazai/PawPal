@@ -21,6 +21,9 @@ expo-env.d.ts
 # Metro
 .metro-health-check*
 
+# MapLibre GL JS web worker, copied from node_modules on postinstall
+/public/maplibre-gl-worker.mjs
+
 # debug
 npm-debug.*
 yarn-debug.*

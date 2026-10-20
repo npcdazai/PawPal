@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
 import { Icon } from '../components/Icon';
@@ -103,11 +104,11 @@ export function FindingWalkersModal({
 
   return (
     <View style={StyleSheet.absoluteFill}>
-      <Animated.View style={[styles.backdrop, { opacity: enter }]} />
-
-      <PingChip top="12%" left="6%" label="⭐ 4.9 Marcus" tint={colors.primary} />
-      <PingChip top="7%" left="54%" label="⭐ 5.0 Elena" tint={colors.coral} delay={500} />
-      <PingChip top="19%" left="44%" label="⭐ 4.8 David" tint={colors.amber} delay={1000} />
+      {/* The live map (with nearby walkers pinging) stays visible through a 5px blur. */}
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: enter }]}>
+        <BlurView intensity={25} style={StyleSheet.absoluteFill} />
+        <View style={styles.dim} />
+      </Animated.View>
 
       <View style={styles.center} pointerEvents="box-none">
         <Animated.View
@@ -236,72 +237,10 @@ export function FindingWalkersModal({
   );
 }
 
-/** Walker avatar pin pinging and drifting over the dimmed map. */
-function PingChip({
-  top,
-  left,
-  label,
-  tint,
-  delay = 0,
-}: {
-  top: `${number}%`;
-  left: `${number}%`;
-  label: string;
-  tint: string;
-  delay?: number;
-}) {
-  const [ping] = useState(() => new Animated.Value(0));
-
-  useEffect(() => {
-    const animation = Animated.sequence([
-      Animated.delay(delay),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(ping, {
-            toValue: 1,
-            duration: 1400,
-            easing: Easing.inOut(Easing.sin),
-            useNativeDriver: NATIVE_DRIVER,
-          }),
-          Animated.timing(ping, {
-            toValue: 0,
-            duration: 1400,
-            easing: Easing.inOut(Easing.sin),
-            useNativeDriver: NATIVE_DRIVER,
-          }),
-        ])
-      ),
-    ]);
-    animation.start();
-    return () => animation.stop();
-  }, [delay, ping]);
-
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[
-        styles.ping,
-        {
-          top,
-          left,
-          transform: [
-            { translateX: ping.interpolate({ inputRange: [0, 1], outputRange: [-8, 10] }) },
-            { translateY: ping.interpolate({ inputRange: [0, 1], outputRange: [0, -6] }) },
-            { scale: ping.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.08, 1] }) },
-          ],
-        },
-      ]}
-    >
-      <View style={[styles.pingDot, { backgroundColor: tint }]} />
-      <Text style={styles.pingText}>{label}</Text>
-    </Animated.View>
-  );
-}
-
 const styles = StyleSheet.create({
-  backdrop: {
+  dim: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(24, 26, 32, 0.45)',
+    backgroundColor: 'rgba(24, 26, 32, 0.32)',
   },
   center: {
     ...StyleSheet.absoluteFill,
@@ -506,27 +445,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-  },
-  ping: {
-    position: 'absolute',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: radii.full,
-    backgroundColor: colors.card,
-    ...shadows.soft,
-  },
-  pingDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  pingText: {
-    fontFamily: fonts.bold,
-    fontSize: 12,
-    color: colors.ink,
   },
   pressed: {
     opacity: 0.85,
