@@ -427,7 +427,7 @@ function WalkerBookingCard({ booking, onBook, onRebook, onTrack }: WalkerBooking
       booking.status === 'completed'
         ? `${booking.distanceKm?.toFixed(2) ?? '0.00'} km with ${walker.shortName} · ${'★'.repeat(booking.rating ?? 5)}`
         : booking.status === 'inProgress'
-          ? `with ${walker.shortName} · Elm Creek Park loop`
+          ? `with ${walker.shortName} · neighbourhood walk`
           : booking.status === 'enRoute'
             ? `${walker.shortName} ⭐ ${walker.rating.toFixed(1)} · heading to ${place.emoji} ${booking.placeLabel}`
             : `${walker.shortName} ⭐ ${walker.rating.toFixed(1)} · ${booking.whenLabel}`;

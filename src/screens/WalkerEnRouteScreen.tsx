@@ -26,7 +26,7 @@ import { MapPill, PulsingDot, RoundIconButton, TrackingTopBar } from '../booking
 import { enRouteStatus } from '../booking/liveWalk';
 import { bearingAlong, boundsOf, pointAlong, splitLine, type GeoLine } from '../booking/geo';
 import { PICKUP_PLACES, walkerStartFor } from '../booking/pickupPlaces';
-import { usePickupRoute } from '../booking/walkRoutes';
+import { prefetchWalkLoop, usePickupRoute } from '../booking/walkRoutes';
 import { MapLine, MapMarker, PawMap } from '../maps/PawMap';
 import {
   BARNABY_PIN_OFFSET,
@@ -72,6 +72,12 @@ export function WalkerEnRouteScreen() {
   // The walker's real street route (OSRM foot profile) from where they were matched.
   const pickup = booking?.pickup ?? PICKUP_PLACES.home.lngLat;
   const route = usePickupRoute(pickup);
+
+  // Route the walk itself now, so the live map has real streets from the first step.
+  const [pickupLng, pickupLat] = pickup;
+  useEffect(() => {
+    prefetchWalkLoop([pickupLng, pickupLat]);
+  }, [pickupLng, pickupLat]);
 
   if (!booking) {
     return <NoActiveWalk onBack={() => go('exitTracking')} />;

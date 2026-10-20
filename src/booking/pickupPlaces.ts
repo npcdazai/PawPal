@@ -108,18 +108,4 @@ export function searchPlaces(query: string): PickupPlace[] {
 /** The matched walker sets off ~800 m (as the crow flies) north-west of the pickup. */
 export const walkerStartFor = (pickup: LngLat): LngLat => offsetMeters(pickup, -650, 450);
 
-/**
- * The walk itself: from the pickup through Elm Creek (Duboce) Park, up to
- * Alamo Square and back — waypoints for the routing engine.
- */
-export const parkLoopWaypoints = (pickup: LngLat): LngLat[] => [
-  pickup,
-  [-122.43195, 37.7696], // Duboce Park, Steiner St entrance
-  [-122.4353, 37.76925], // Duboce Park, Scott St end
-  [-122.434, 37.77015], // Duboce Park, north lawn
-  [-122.4327, 37.7757], // Alamo Square, Hayes & Steiner
-  [-122.43465, 37.7764], // Alamo Square, hilltop
-  pickup,
-];
-
 export const isHome = (lngLat: LngLat) => lngLat[0] === HOME[0] && lngLat[1] === HOME[1];

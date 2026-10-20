@@ -11,6 +11,7 @@ import {
   PlusJakartaSans_800ExtraBold,
 } from '@expo-google-fonts/plus-jakarta-sans';
 import { BookingsProvider } from '../booking/BookingsProvider';
+import { WalkArrivalBanner } from '../booking/WalkArrivalBanner';
 import { MascotProvider } from '../mascot/MascotProvider';
 import { AppTabBar } from '../navigation/AppTabBar';
 import { STACK_SCREENS } from '../navigation/navigation';
@@ -61,6 +62,7 @@ export default function RootLayout() {
             ))}
           </Stack>
           <AppTabBar />
+          <WalkArrivalBanner />
         </View>
       </BookingsProvider>
     </MascotProvider>

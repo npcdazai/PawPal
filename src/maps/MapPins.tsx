@@ -166,11 +166,22 @@ export function MilestonePin({
   );
 }
 
-/** Home on the walk map: where the loop starts and ends. Anchor "center". */
-export function HomeDot() {
+const HOME_DOT = 32;
+
+/** Use with anchor "bottom" so the dot's centre sits on the coordinate. */
+export const START_DOT_OFFSET: [number, number] = [0, HOME_DOT / 2];
+
+/** Where the walk started, with a "Start" tag above the dot. */
+export function StartDot() {
   return (
-    <View pointerEvents="none" style={styles.homeDot}>
-      <View style={styles.homeDotInner} />
+    <View pointerEvents="none" style={styles.startColumn}>
+      <View style={styles.startTag}>
+        <Icon name="home" size={12} color={colors.onPrimary} />
+        <Text style={styles.startText}>Start</Text>
+      </View>
+      <View style={styles.homeDot}>
+        <View style={styles.homeDotInner} />
+      </View>
     </View>
   );
 }
@@ -334,10 +345,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.onPrimary,
   },
+  startColumn: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  startTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.full,
+    backgroundColor: colors.primary,
+  },
+  startText: {
+    fontFamily: fonts.bold,
+    fontSize: 11,
+    color: colors.onPrimary,
+  },
   homeDot: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: HOME_DOT,
+    height: HOME_DOT,
+    borderRadius: HOME_DOT / 2,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primary,

@@ -16,7 +16,7 @@ import { Icon } from '../components/Icon';
 import { Avatar } from '../components/Avatar';
 import { ActionSheet } from '../components/ActionSheet';
 import { Toast, useToast } from '../components/Toast';
-import { useMascotActions } from '../mascot/MascotProvider';
+import { useMascotActions, useMascotStatus } from '../mascot/MascotProvider';
 import { useAppNavigation } from '../navigation/useAppNavigation';
 import { useBookings, useTrackedWalk, type WalkBooking } from '../booking/BookingsProvider';
 import { WalkerChatSheet } from '../booking/WalkerChatSheet';
@@ -25,16 +25,18 @@ import { MapPill, PulsingDot, RoundIconButton, TrackingTopBar } from '../booking
 import { eventMinute, formatClockTime, formatCountdown, liveWalkStatus } from '../booking/liveWalk';
 import { boundsOf, headingAlong, pointAlong, splitLine, type GeoLine } from '../booking/geo';
 import { PICKUP_PLACES } from '../booking/pickupPlaces';
-import { useParkLoop } from '../booking/walkRoutes';
+import { useWalkLoop, walkLoopWaypoints } from '../booking/walkRoutes';
 import { MapLine, MapMarker, PawMap } from '../maps/PawMap';
 import {
   BARNABY_PIN_OFFSET,
   BarnabyPin,
-  HomeDot,
   MILESTONE_OFFSET,
   MilestonePin,
+  START_DOT_OFFSET,
+  StartDot,
   useFrameClock,
 } from '../maps/MapPins';
+import { arrivalBuzz } from '../booking/WalkArrivalBanner';
 import { NoActiveWalk } from './WalkerEnRouteScreen';
 import { WALKERS, type Walker } from '../data/careTeam';
 
@@ -47,8 +49,6 @@ const SAFETY_LINE = '+18005550199';
 const EMERGENCY_VET = '+14155550199';
 /** Room for the LIVE WALK pill above and Barnaby's pin wherever he is on the loop. */
 const MAP_PADDING = { top: 150, right: 60, bottom: 72, left: 60 };
-/** Coral dashes for the way home. */
-const RETURN_DASH = [2, 2] as const;
 
 /** A milestone dropped on the trail at fraction `at` of the loop. */
 interface TrailMarker {
@@ -63,7 +63,8 @@ export function LiveWalkScreen() {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const { go } = useAppNavigation();
-  const { bark, navigate, setWalking, face } = useMascotActions();
+  const { bark, barkWith, navigate, setWalking, face } = useMascotActions();
+  const { hapticsEnabled } = useMascotStatus();
   const { completeWalk, logWater: recordWater } = useBookings();
   const booking = useTrackedWalk();
   const { message, show } = useToast();
@@ -94,9 +95,10 @@ export function LiveWalkScreen() {
     return () => setWalking(false);
   }, [setWalking]);
 
-  // The walk's real GeoJSON loop (OSRM foot profile); telemetry follows its length.
+  // The walker's road around wherever Barnaby was picked up (OSRM foot profile);
+  // telemetry follows how far along it they are.
   const pickup = booking?.pickup ?? PICKUP_PLACES.home.lngLat;
-  const loop = useParkLoop(pickup);
+  const loop = useWalkLoop(pickup);
   const status = booking ? liveWalkStatus(booking, now, loop.lengthKm) : null;
 
   // Face the direction of travel; stop walking once home.
@@ -114,8 +116,18 @@ export function LiveWalkScreen() {
     }
   }, [loop, progressNow, done, face, setWalking]);
 
-  // Walked trail (solid blue) and the way home (dashed coral), split at Barnaby.
-  const { done: trail, rest } = splitLine(loop, progressNow);
+  // Only the road the walker has actually taken: start → where Barnaby is now.
+  const { done: trail } = splitLine(loop, progressNow);
+
+  // Back at the start: buzz, Barnaby woofs, and the arrival sheet asks for the drop-off.
+  const [arrivalSeen, setArrivalSeen] = useState(false);
+  const announced = useRef(false);
+  useEffect(() => {
+    if (!done || announced.current) return;
+    announced.current = true;
+    arrivalBuzz(hapticsEnabled);
+    barkWith("Woof! I'm home! 🏠");
+  }, [done, hapticsEnabled, barkWith]);
 
   if (!booking || !status) {
     return <NoActiveWalk onBack={() => go('exitTracking')} />;
@@ -173,20 +185,19 @@ export function LiveWalkScreen() {
       <TrackingTopBar
         title="Live Walker Tracking"
         onBack={() => go('exitTracking')}
-        onInfo={() => show('Live GPS route · blue = walked, coral = way home')}
+        onInfo={() => show(`Live GPS · blue is the road ${firstName} has walked so far`)}
       />
 
       <View style={[styles.mapArea, { height: mapHeight }]}>
         <PawMap
           initialCenter={pickup}
-          initialBounds={{ bounds: boundsOf(loop.coords), padding: MAP_PADDING }}
+          initialBounds={{ bounds: boundsOf(walkLoopWaypoints(pickup)), padding: MAP_PADDING }}
           style={StyleSheet.absoluteFill}
         >
-          <MapLine id="walk-return" coords={rest} color={colors.coral} width={3.5} dash={RETURN_DASH} />
           <MapLine id="walk-trail" coords={trail} color={colors.primary} width={5} />
 
-          <MapMarker lngLat={pickup} anchor="center">
-            <HomeDot />
+          <MapMarker lngLat={pickup} anchor="bottom" offset={START_DOT_OFFSET}>
+            <StartDot />
           </MapMarker>
 
           {/* Milestones dropped at their exact spot on the trail */}
@@ -389,7 +400,7 @@ export function LiveWalkScreen() {
           <View style={styles.photoCard}>
             <Image source={PARK_PHOTO} style={styles.photo} resizeMode="cover" />
             <Text style={styles.photoCaption}>
-              📸 Barnaby at Elm Creek Park · snapped by {firstName}
+              📸 Barnaby at the park · snapped by {firstName}
             </Text>
             <Text style={styles.meta}>Tap anywhere to close</Text>
           </View>
@@ -402,6 +413,27 @@ export function LiveWalkScreen() {
           latest={status.update.text}
           quickReplies={['Thank you! 🐾', 'Extra treat for good boy?', 'Take a photo please 📸']}
           onClose={() => setChatOpen(false)}
+        />
+      ) : null}
+
+      {status.done && !arrivalSeen && !completing && !completed ? (
+        <ActionSheet
+          title="🏠 Barnaby is back home!"
+          subtitle={`${firstName} just walked Barnaby back to the start — ${status.km.toFixed(2)} km in ${booking.minutes} min.`}
+          cancelLabel="Not now"
+          options={[
+            {
+              icon: 'check-circle',
+              label: 'Confirm Drop-off',
+              detail: `Rate ${firstName} and add a tip`,
+              tone: 'primary',
+              onPress: () => {
+                setArrivalSeen(true);
+                complete();
+              },
+            },
+          ]}
+          onClose={() => setArrivalSeen(true)}
         />
       ) : null}
 

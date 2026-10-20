@@ -9,13 +9,17 @@ export const DEMO_TIME_SCALE = 12;
 
 export const PICKUP_OTP = '4829';
 
-/** A ~12 kg corgi burns ~80 kcal per km at a brisk walk (~237 kcal on the 2.9 km park loop). */
+/** A ~12 kg corgi burns ~80 kcal per km at a brisk walk (~240 kcal on a 3 km loop). */
 const KCAL_PER_KM = 80;
 
 const simSecondsSince = (start: number, now: number) => ((now - start) / 1000) * DEMO_TIME_SCALE;
 
 /** Real milliseconds until `simSeconds` of walk time have passed. */
 export const realMsFor = (simSeconds: number) => (simSeconds * 1000) / DEMO_TIME_SCALE;
+
+/** When a started walk arrives back at its start (epoch ms), or null before it starts. */
+export const walkReturnsAt = (booking: Pick<WalkBooking, 'startedAt' | 'minutes'>) =>
+  booking.startedAt === null ? null : booking.startedAt + realMsFor(booking.minutes * 60);
 
 /** The walker's approach: progress along their `routeKm`-long route to the pickup. */
 export function enRouteStatus(
@@ -56,11 +60,11 @@ export const WALK_EVENTS: readonly WalkEvent[] = [
 
 const WALKER_UPDATES: readonly { at: number; text: string; photo?: boolean }[] = [
   { at: 0, text: 'Picked up Barnaby! Leash on, tail going a mile a minute 🐾' },
-  { at: 12 / 45, text: 'Water break at the Elm Creek fountain 💧 He drank half the bowl!' },
-  { at: 19 / 45, text: 'Potty logged ✔️ Such a good boy on the way up to Alamo Square.' },
+  { at: 12 / 45, text: 'Water break at the park fountain 💧 He drank half the bowl!' },
+  { at: 19 / 45, text: 'Potty logged ✔️ Such a good boy on the loop.' },
   {
     at: 24 / 45,
-    text: 'Barnaby just met a Golden Retriever and drank some water! Heading over the hill, then home.',
+    text: 'Barnaby just met a Golden Retriever and drank some water! Looping back toward your street now.',
     photo: true,
   },
   { at: 1, text: "We're back home! Barnaby is tired, happy and ready for a nap 🏠" },
@@ -95,17 +99,15 @@ export function liveWalkStatus(
     reached,
     update,
     updateAgo: updateAgoMin === 0 ? 'just now' : `${updateAgoMin} min${updateAgoMin === 1 ? '' : 's'} ago`,
-    // Legs of the park loop: Home → Elm Creek (Duboce) Park → Alamo Square → Home.
+    // The walk loops out from the pickup and back, wherever that is.
     phase:
       progress >= 1
         ? 'Back home'
-        : progress < 0.17
-          ? 'Heading to Elm Creek Park'
-          : progress < 0.36
-            ? 'Elm Creek Park Loop'
-            : progress < 0.71
-              ? 'Up to Alamo Square'
-              : 'Heading home',
+        : progress < 0.15
+          ? 'Heading out'
+          : progress < 0.85
+            ? 'Exploring the neighbourhood'
+            : 'Heading home',
   };
 }
 
