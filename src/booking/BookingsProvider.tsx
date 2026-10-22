@@ -1,18 +1,24 @@
 import React, { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import type { WalkerId } from '../data/careTeam';
+import type { UpiReceipt } from '../payments/useUpiPayment';
+import type { GearKey, Temperament } from './dogProfile';
 import type { LngLat } from './geo';
-import type { PlaceKey } from './pickupPlaces';
-import { DEFAULT_MINUTES, type WalkMinutes, type WalkTiming } from './walkPlans';
+import type { LoggedEvent, WalkEventKind } from './liveWalk';
+import type { SocietyKey } from './societies';
+import { minuteOfDay, type Batch, type WalkMinutes, type WalkTier } from './walkPlans';
 
-/** Choices from "Book a Walk", carried into pickup selection and matching. */
-export interface WalkDraft {
-  timing: WalkTiming;
-  /** Chosen slot label when scheduled, e.g. "Today, 5:30 PM". */
-  slotLabel: string | null;
-  minutes: WalkMinutes;
-  walkerNotes: string;
-  /** Favourite walker to request first (Profile "Rebook"). */
-  preferredWalkerId: WalkerId | null;
+/**
+ * Where Barnaby lives and how he must be handled. Required before booking:
+ * it decides which walker is assigned and which plans are allowed.
+ */
+export interface SocietyProfile {
+  society: SocietyKey;
+  /** As the resident wrote it, normalised: "Tower B" / "Wing B". */
+  tower: string;
+  flat: string;
+  temperament: Temperament;
+  gear: readonly GearKey[];
+  notes: string;
 }
 
 export type WalkStatus = 'scheduled' | 'enRoute' | 'inProgress' | 'completed' | 'cancelled';
@@ -20,64 +26,87 @@ export type WalkStatus = 'scheduled' | 'enRoute' | 'inProgress' | 'completed' | 
 export interface WalkBooking {
   id: string;
   status: WalkStatus;
-  timing: WalkTiming;
-  /** "Arriving in 12 mins" or the scheduled slot. */
-  whenLabel: string;
+  tier: WalkTier;
   minutes: WalkMinutes;
+  /** Rupees paid for this booking (a subscription's first month). */
   total: number;
-  placeKey: PlaceKey;
-  placeLabel: string;
-  address: string;
-  /** Where the walker collects Barnaby; walk routes start and end here. */
+  /** The verified UPI payment for this booking. */
+  payment: UpiReceipt | null;
+  society: SocietyKey;
+  tower: string;
+  flat: string;
+  /** The tower's lift lobby: walks start and end here. */
   pickup: LngLat;
+  /** Where the walker sets off from (the previous slot's tower). */
+  walkerFrom: LngLat;
+  /** The previous slot's tower, when the walker is stacked straight before Barnaby. */
+  walkerFromTower: string | null;
+  batch: Batch | null;
+  /** Slot start, minutes from midnight (the walk clock counts from here). */
+  slotStart: number;
+  /** "7:00 – 7:30 AM Daily" or "SOS Express · within 60–90 mins". */
+  slotLabel: string;
+  /** Dashboard line: "Arriving in 4 mins" etc. */
+  whenLabel: string;
   walkerId: WalkerId;
-  /** Handover code the walker enters at pickup. */
+  /** Who was booked; differs from `walkerId` once the backup has taken over. */
+  regularWalkerId: WalkerId;
+  /** Pre-briefed shadow walker; null once they have taken over. */
+  backupWalkerId: WalkerId | null;
+  /** The regular walker was out and the backup took the slot. */
+  reassigned: boolean;
+  /** Handover code the walker enters at the doorstep. */
   otp: string;
-  /** When the walker was matched (epoch ms); the en-route ETA counts from here. */
+  /** When the walker was confirmed (epoch ms); the arrival ETA counts from here. */
   matchedAt: number;
   etaMinutes: number;
-  /** When the OTP was verified and the walk began. */
+  /** When the OTP was verified and the walk (and its insurance) began. */
   startedAt: number | null;
   completedAt: number | null;
-  /** Extra water breaks logged from the live walk screen. */
-  extraWater: number;
+  /** Pee / poop / photo stops the walker logged live. */
+  loggedEvents: readonly LoggedEvent[];
   distanceKm: number | null;
   rating: number | null;
   tip: number | null;
 }
 
-export const DEFAULT_DRAFT: WalkDraft = {
-  timing: 'instant',
-  slotLabel: null,
-  minutes: DEFAULT_MINUTES,
-  walkerNotes: 'Watch for squirrels near Elm Creek Park',
-  preferredWalkerId: null,
-};
-
 type NewBooking = Omit<
   WalkBooking,
-  'id' | 'matchedAt' | 'startedAt' | 'completedAt' | 'extraWater' | 'distanceKm' | 'rating' | 'tip'
+  | 'id'
+  | 'matchedAt'
+  | 'startedAt'
+  | 'completedAt'
+  | 'loggedEvents'
+  | 'distanceKm'
+  | 'rating'
+  | 'tip'
+  | 'reassigned'
+  | 'regularWalkerId'
 >;
 
 interface BookingsValue {
-  draft: WalkDraft;
-  setDraft: (draft: WalkDraft) => void;
+  /** Saved once from Screen 5; prefills it next time. */
+  societyProfile: SocietyProfile | null;
+  setSocietyProfile: (profile: SocietyProfile) => void;
   /** Newest first. */
   bookings: readonly WalkBooking[];
-  /** Records a matched walker (timestamped now). */
+  /** Records a confirmed walker (timestamped now). */
   addBooking: (booking: NewBooking) => WalkBooking;
-  /** OTP verified: the walk timer starts now. */
+  /** OTP verified: the walk timer and insurance start now. */
   startWalk: (id: string) => void;
   completeWalk: (id: string, result: { distanceKm: number; rating: number; tip: number }) => void;
   cancelWalk: (id: string) => void;
-  logWater: (id: string) => void;
+  /** The regular walker is out: the pre-briefed backup takes the same slot. */
+  reassignToBackup: (id: string, etaMinutes: number) => void;
+  /** The walker logged a pee / poop / photo stop at fraction `at` of the walk. */
+  logEvent: (id: string, kind: WalkEventKind, at: number) => void;
 }
 
 const BookingsContext = createContext<BookingsValue | null>(null);
 
-/** In-memory walk bookings and the in-progress draft for this session. */
+/** In-memory society profile and walk bookings for this session. */
 export function BookingsProvider({ children }: { children: ReactNode }) {
-  const [draft, setDraft] = useState<WalkDraft>(DEFAULT_DRAFT);
+  const [societyProfile, setSocietyProfile] = useState<SocietyProfile | null>(null);
   const [bookings, setBookings] = useState<readonly WalkBooking[]>([]);
 
   const addBooking = useCallback((details: NewBooking) => {
@@ -86,9 +115,11 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
       ...details,
       id: `walk-${matchedAt}`,
       matchedAt,
+      regularWalkerId: details.walkerId,
+      reassigned: false,
       startedAt: null,
       completedAt: null,
-      extraWater: 0,
+      loggedEvents: [],
       distanceKm: null,
       rating: null,
       tip: null,
@@ -107,7 +138,15 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
   );
 
   const startWalk = useCallback(
-    (id: string) => update(id, () => ({ status: 'inProgress', startedAt: Date.now() })),
+    (id: string) => {
+      const startedAt = Date.now();
+      update(id, (booking) => ({
+        status: 'inProgress',
+        startedAt,
+        // Express walks have no fixed slot: the walk clock starts when the OTP is shared.
+        ...(booking.tier === 'express' ? { slotStart: minuteOfDay(new Date(startedAt)) } : {}),
+      }));
+    },
     [update]
   );
   const completeWalk = useCallback(
@@ -116,14 +155,41 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
     [update]
   );
   const cancelWalk = useCallback((id: string) => update(id, () => ({ status: 'cancelled' })), [update]);
-  const logWater = useCallback(
-    (id: string) => update(id, (booking) => ({ extraWater: booking.extraWater + 1 })),
+  const reassignToBackup = useCallback(
+    (id: string, etaMinutes: number) =>
+      update(id, (booking) =>
+        booking.backupWalkerId
+          ? {
+              walkerId: booking.backupWalkerId,
+              backupWalkerId: null,
+              reassigned: true,
+              matchedAt: Date.now(),
+              etaMinutes,
+              whenLabel: `Backup arriving in ${etaMinutes} mins`,
+            }
+          : {}
+      ),
+    [update]
+  );
+  const logEvent = useCallback(
+    (id: string, kind: WalkEventKind, at: number) =>
+      update(id, (booking) => ({ loggedEvents: [...booking.loggedEvents, { kind, at }] })),
     [update]
   );
 
   const value = useMemo(
-    () => ({ draft, setDraft, bookings, addBooking, startWalk, completeWalk, cancelWalk, logWater }),
-    [draft, bookings, addBooking, startWalk, completeWalk, cancelWalk, logWater]
+    () => ({
+      societyProfile,
+      setSocietyProfile,
+      bookings,
+      addBooking,
+      startWalk,
+      completeWalk,
+      cancelWalk,
+      reassignToBackup,
+      logEvent,
+    }),
+    [societyProfile, bookings, addBooking, startWalk, completeWalk, cancelWalk, reassignToBackup, logEvent]
   );
   return <BookingsContext.Provider value={value}>{children}</BookingsContext.Provider>;
 }
@@ -137,7 +203,7 @@ export function useBookings() {
 const isActive = (booking: WalkBooking) =>
   booking.status === 'enRoute' || booking.status === 'inProgress';
 
-/** The walk currently being tracked (walker en route or walk in progress), if any. */
+/** The walk currently being tracked (walker on the way or walk in progress), if any. */
 export function useActiveWalk() {
   const { bookings } = useBookings();
   return bookings.find(isActive);
@@ -151,4 +217,10 @@ export function useTrackedWalk() {
   const { bookings } = useBookings();
   const [trackedId] = useState(() => bookings.find(isActive)?.id ?? null);
   return bookings.find((booking) => booking.id === trackedId);
+}
+
+/** Completed walks: the trust history that unlocks SOS Express for reactive dogs. */
+export function usePastWalks() {
+  const { bookings } = useBookings();
+  return bookings.filter((booking) => booking.status === 'completed');
 }

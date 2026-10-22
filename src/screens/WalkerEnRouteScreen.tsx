@@ -1,20 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Linking,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-} from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
 import { Icon } from '../components/Icon';
 import { Avatar } from '../components/Avatar';
-import { Badge } from '../components/Badge';
 import { PrimaryButton } from '../components/Button';
 import { ActionSheet } from '../components/ActionSheet';
 import { Toast, useToast } from '../components/Toast';
@@ -25,32 +15,29 @@ import { WalkerChatSheet } from '../booking/WalkerChatSheet';
 import { MapPill, PulsingDot, RoundIconButton, TrackingTopBar } from '../booking/trackingUi';
 import { enRouteStatus } from '../booking/liveWalk';
 import { bearingAlong, boundsOf, pointAlong, splitLine, type GeoLine } from '../booking/geo';
-import { PICKUP_PLACES, walkerStartFor } from '../booking/pickupPlaces';
+import { SOCIETIES } from '../booking/societies';
+import { INSURANCE_COVER, clockLabel, formatMoney } from '../booking/walkPlans';
 import { prefetchWalkLoop, usePickupRoute } from '../booking/walkRoutes';
 import { MapLine, MapMarker, PawMap } from '../maps/PawMap';
-import {
-  BARNABY_PIN_OFFSET,
-  BarnabyPin,
-  WALKER_PIN_OFFSET,
-  WalkerPin,
-  useFrameClock,
-} from '../maps/MapPins';
+import { BARNABY_PIN_OFFSET, BarnabyPin, WALKER_PIN_OFFSET, WalkerPin, useFrameClock } from '../maps/MapPins';
 import { WALKERS, type Walker } from '../data/careTeam';
 
 const START_DELAY_MS = 750;
+/** The backup walker is already inside the township. */
+const BACKUP_ETA_MIN = 3;
 const MONO = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' });
-/** Room for the ETA pill above and the sheet's rounded top below. */
-const MAP_PADDING = { top: 150, right: 56, bottom: 64, left: 56 };
-/** Primary blue dashes: line-dasharray [2, 2]. */
+/** Room for the batch pill above, the lobby pill below and the sheet's rounded top. */
+const MAP_PADDING = { top: 120, right: 70, bottom: 110, left: 70 };
 const ROUTE_DASH = [2, 2] as const;
+const MINT = '#E8F8F0';
 
-/** Screen 8 — walker heading to the pickup, with the handover OTP. */
+/** Screen 7 — WALKER_EN_ROUTE_OTP: the assigned society walker, auto-backup and the insurance OTP. */
 export function WalkerEnRouteScreen() {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const { go } = useAppNavigation();
-  const { barkWith } = useMascotActions();
-  const { startWalk, cancelWalk } = useBookings();
+  const { barkWith, glance } = useMascotActions();
+  const { startWalk, cancelWalk, reassignToBackup, societyProfile } = useBookings();
   const booking = useTrackedWalk();
   const { message, show } = useToast();
 
@@ -69,11 +56,12 @@ export function WalkerEnRouteScreen() {
     };
   }, []);
 
-  // The walker's real street route (OSRM foot profile) from where they were matched.
-  const pickup = booking?.pickup ?? PICKUP_PLACES.home.lngLat;
-  const route = usePickupRoute(pickup);
+  // The walker's path across the complex: previous slot's tower → Barnaby's lift lobby.
+  const pickup = booking?.pickup ?? SOCIETIES.hiranandani.center;
+  const from = booking?.walkerFrom ?? pickup;
+  const route = usePickupRoute(from, pickup);
 
-  // Route the walk itself now, so the live map has real streets from the first step.
+  // Route the walk loop now, so the live map has the township's real paths from the first step.
   const [pickupLng, pickupLat] = pickup;
   useEffect(() => {
     prefetchWalkLoop([pickupLng, pickupLat]);
@@ -83,44 +71,70 @@ export function WalkerEnRouteScreen() {
     return <NoActiveWalk onBack={() => go('exitTracking')} />;
   }
 
+  const society = SOCIETIES[booking.society];
   const walker = WALKERS[booking.walkerId];
+  const regular = WALKERS[booking.regularWalkerId];
+  const backup = booking.backupWalkerId ? WALKERS[booking.backupWalkerId] : null;
+  const firstName = walker.name.split(' ')[0];
   const status = enRouteStatus(booking, now, route.lengthKm);
-  const mapHeight = Math.round(windowHeight * 0.5);
+  const mapHeight = Math.round(windowHeight * 0.44);
+  const express = booking.tier === 'express';
+  const handsOn = societyProfile?.temperament === 'pulls' && walker.heavyDuty;
+
+  const arrivalText = status.arrived
+    ? `${firstName} is at the ${booking.tower} lift lobby`
+    : `Arriving in ${status.remainingMin} min${status.remainingMin === 1 ? '' : 's'}`;
+  const batchLine = booking.reassigned
+    ? `${firstName} was pre-briefed on Barnaby and is crossing the complex now (${arrivalText.toLowerCase()}).`
+    : booking.walkerFromTower
+      ? `Currently finishing the ${clockLabel(booking.slotStart - 30)} walk in Tower ${booking.walkerFromTower} (${
+          status.arrived ? `waiting at the ${booking.tower} lift lobby` : `arriving at the ${booking.tower} lift lobby in ${status.remainingMin} mins`
+        })`
+      : express
+        ? `Express walker squeezed in between ${society.shortName}’s stacked slots — already inside the complex.`
+        : `Starting the batch inside ${society.shortName} — heading to the ${booking.tower} lift lobby.`;
+
+  const maskedCall = () => show(`📞 Connecting to ${firstName} via PawPal’s masked line — numbers stay private`);
+
+  const simulateSickLeave = () => {
+    if (!backup) return;
+    reassignToBackup(booking.id, BACKUP_ETA_MIN);
+    glance();
+    barkWith(`Woof! ${backup.name.split(' ')[0]} is on it 🔄`);
+    show(`🤒 ${regular.name.split(' ')[0]} called in sick — ${backup.shortName} keeps your ${clockLabel(booking.slotStart)} slot`);
+  };
 
   const verifyAndStart = () => {
     if (starting) return;
     setStarting(true);
-    barkWith("Woof! Let's go! 🐾");
+    barkWith("Woof! Insurance on — let's go! 🐾");
     startTimer.current = setTimeout(() => {
       startWalk(booking.id);
       go('startLiveWalk');
     }, START_DELAY_MS);
   };
 
-  const call = () =>
-    Linking.openURL(`tel:${walker.phone}`).catch(() => show('Calling isn’t available here'));
-
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <TrackingTopBar
-        title="Live Walker Tracking"
+        title="Walker Match & OTP"
         onBack={() => go('exitTracking')}
-        onInfo={() => show('Live GPS · your walker’s position updates every second')}
+        onInfo={() => show(`Society walkers only work inside ${society.shortName} — no traffic, no delays`)}
       />
 
       <View style={[styles.mapArea, { height: mapHeight }]}>
         <PawMap
           initialCenter={pickup}
-          initialBounds={{ bounds: boundsOf([walkerStartFor(pickup), pickup]), padding: MAP_PADDING }}
+          initialBounds={{ bounds: boundsOf([from, pickup]), padding: MAP_PADDING }}
           style={StyleSheet.absoluteFill}
         >
-          {/* Pickup pin: Barnaby waits here with his leash (IDLE_WAG; tap him to woof). */}
+          {/* Barnaby waits at his lobby with the leash (IDLE_WAG; tap him to woof). */}
           <MapMarker lngLat={pickup} anchor="bottom" offset={BARNABY_PIN_OFFSET}>
             <BarnabyPin
               label={
                 <>
                   <Icon name="home" size={13} color={colors.onPrimary} />
-                  <Text style={styles.pickupText}>Pickup</Text>
+                  <Text style={styles.pinText}>Barnaby (Pickup)</Text>
                 </>
               }
             />
@@ -128,22 +142,27 @@ export function WalkerEnRouteScreen() {
           <WalkerOnRoute route={route} booking={booking} walker={walker} running={!status.arrived} />
         </PawMap>
 
-        <View style={styles.etaRow} pointerEvents="none">
+        <View style={styles.topPillRow} pointerEvents="none">
           <MapPill>
             <PulsingDot />
-            {status.arrived ? (
-              <Text style={styles.etaText}>
-                🎉 {walker.name.split(' ')[0]} has arrived · share your OTP
-              </Text>
-            ) : (
-              <Text style={styles.etaText}>
-                🐕 Walker arriving in{' '}
-                <Text style={styles.etaStrong}>
-                  {status.remainingMin} min{status.remainingMin === 1 ? '' : 's'}
-                </Text>{' '}
-                ({status.km.toFixed(1)} km away)
-              </Text>
-            )}
+            <Text style={styles.pillText} numberOfLines={1}>
+              {booking.reassigned
+                ? `Backup ${walker.shortName} assigned`
+                : booking.walkerFromTower
+                  ? `Finishing ${clockLabel(booking.slotStart - 30)} slot at Tower ${booking.walkerFromTower}`
+                  : express
+                    ? 'Express walker dispatched'
+                    : `Starting ${society.shortName} batch`}{' '}
+              <Text style={styles.pillStrong}>• 0 m travel delay</Text>
+            </Text>
+          </MapPill>
+        </View>
+        <View style={styles.bottomPillRow} pointerEvents="none">
+          <MapPill>
+            <Icon name="place" size={17} color={colors.coral} />
+            <Text style={styles.pillText} numberOfLines={1}>
+              {booking.tower} Main Lobby • <Text style={styles.pillStrong}>{arrivalText}</Text>
+            </Text>
           </MapPill>
         </View>
       </View>
@@ -151,54 +170,92 @@ export function WalkerEnRouteScreen() {
       <View style={styles.sheet}>
         <View style={styles.handle} />
         <ScrollView style={styles.flex} contentContainerStyle={styles.sheetContent} showsVerticalScrollIndicator={false}>
-          <View style={styles.titleRow}>
-            <View style={styles.flex}>
-              <Text style={styles.sheetTitle}>
-                {status.arrived
-                  ? `${walker.name.split(' ')[0]} is at your door!`
-                  : `${walker.name.split(' ')[0]} is on the way!`}
+          <View>
+            <View style={styles.inlineRow}>
+              <Icon name="verified" size={17} color={colors.successInk} />
+              <Text style={styles.assigned}>
+                {booking.reassigned ? 'BACKUP SOCIETY WALKER ASSIGNED' : 'SOCIETY RESIDENT WALKER ASSIGNED'}
               </Text>
-              <Text style={styles.meta}>Get Barnaby&apos;s red leash ready for pickup</Text>
             </View>
-            <View style={styles.pawBadge}>
-              <Icon name="pets" size={22} color={colors.ink} />
-            </View>
+            <Text style={styles.sheetTitle}>Your Society Walker is Ready!</Text>
+            <Text style={styles.meta}>
+              Operating exclusively within {society.label} • {booking.slotLabel}
+            </Text>
           </View>
 
           <View style={styles.walkerCard}>
             <View>
-              <Avatar initials={walker.initials} tint={walker.tint} ink={walker.ink} size={54} />
+              <Avatar initials={walker.initials} tint={walker.tint} ink={walker.ink} size={56} />
               <View style={styles.onlineDot} />
             </View>
             <View style={styles.flex}>
-              <View style={styles.inlineRow}>
-                <Text style={styles.walkerName}>{walker.name}</Text>
-                <Badge label="Verified" tone="success" dot />
-              </View>
+              <Text style={styles.walkerName}>{walker.name}</Text>
               <View style={styles.inlineRow}>
                 <Icon name="star" size={15} color={colors.amber} />
-                <Text style={styles.rating}>{walker.rating.toFixed(1)}</Text>
-                <Text style={styles.meta}>({walker.totalWalks} walks)</Text>
+                <Text style={styles.rating}>{walker.rating.toFixed(2)}</Text>
+                <Text style={styles.meta}>
+                  ({walker.societyWalks ?? walker.totalWalks} Walks in {society.shortName.split(' ')[0]})
+                </Text>
               </View>
+              <View style={styles.passBadge}>
+                <Icon name="badge" size={14} color={colors.successInk} />
+                <Text style={styles.passText}>
+                  ✓ Verified Society {society.gateApp} Pass #{walker.gatePass ?? '—'}
+                </Text>
+              </View>
+              {handsOn ? <Text style={styles.heavy}>🏋️ Heavy-duty handler for pullers</Text> : null}
             </View>
-            <RoundIconButton icon="call" label={`Call ${walker.name}`} onPress={call} />
-            <RoundIconButton
-              icon="chat"
-              label={`Chat with ${walker.name}`}
-              onPress={() => setChatOpen(true)}
-              badge
-            />
+            <View style={styles.actions}>
+              <RoundIconButton icon="call" label={`Call ${walker.name} (masked)`} onPress={maskedCall} />
+              <RoundIconButton icon="chat" label={`Chat with ${walker.name}`} onPress={() => setChatOpen(true)} badge />
+            </View>
           </View>
 
+          <View style={styles.batchLine}>
+            <Icon name="directions-walk" size={18} color={colors.primary} />
+            <Text style={styles.batchText}>{batchLine}</Text>
+          </View>
+
+          {/* The zero-ghosting moat */}
+          <View style={styles.backup}>
+            <View style={styles.backupIcon}>
+              <Icon name={backup ? 'autorenew' : 'check-circle'} size={22} color={colors.successInk} />
+            </View>
+            <View style={styles.flex}>
+              {backup ? (
+                <Text style={styles.backupText}>
+                  <Text style={styles.backupStrong}>🔄 Guaranteed Backup Active: </Text>
+                  {backup.shortName} (⭐ {backup.rating.toFixed(2)}) is pre-briefed on Barnaby’s harness & route notes
+                  if {regular.name.split(' ')[0]} calls in sick.
+                </Text>
+              ) : (
+                <Text style={styles.backupText}>
+                  <Text style={styles.backupStrong}>✓ Auto-reassigned: </Text>
+                  {walker.shortName} took over {regular.name.split(' ')[0]}’s {clockLabel(booking.slotStart)} slot —
+                  same slot, same route notes, zero ghosting.
+                </Text>
+              )}
+              {backup ? (
+                <Pressable
+                  onPress={simulateSickLeave}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.simulate, pressed && styles.pressed]}
+                >
+                  <Icon name="sick" size={16} color={colors.successInk} />
+                  <Text style={styles.simulateText}>Simulate Regular Walker Sick Leave</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
+
+          {/* OTP leash handover + insurance activation */}
           <View style={styles.otpCard}>
             <View style={styles.otpHeader}>
-              <Icon name="lock" size={20} color={colors.coral} />
-              <Text style={[styles.otpTitle, styles.flex]}>Share OTP with walker at pickup</Text>
-              <View style={styles.securityTag}>
-                <Text style={styles.securityText}>SECURITY</Text>
-              </View>
+              <Text style={[styles.otpTitle, styles.flex]}>
+                🔒 Share OTP at doorstep to start the {booking.minutes}-min GPS timer and unlock{' '}
+                {formatMoney(INSURANCE_COVER)} Active Walk Vet & Accident Insurance.
+              </Text>
             </View>
-            <Text style={styles.meta}>Required to start the {booking.minutes}-min walk timer</Text>
             <View style={styles.digits} aria-label={`One-time code ${booking.otp.split('').join(' ')}`}>
               {booking.otp.split('').map((digit, index) => (
                 <View key={`${digit}-${index}`} style={styles.digitBox}>
@@ -206,19 +263,36 @@ export function WalkerEnRouteScreen() {
                 </View>
               ))}
             </View>
+            <View style={styles.inlineRow}>
+              <Icon name="info-outline" size={15} color={colors.slate} />
+              <Text style={[styles.meta, styles.flex]}>
+                {firstName} verifies this code on the PawPal Partner app before starting the walk.
+              </Text>
+            </View>
+            <View style={styles.warning}>
+              <Text style={styles.warningText}>⚠️ Off-app walks are uninsured and unmonitored.</Text>
+            </View>
           </View>
         </ScrollView>
 
         <View style={[styles.footer, { paddingBottom: insets.bottom + 8 }]}>
           <PrimaryButton
-            label={starting ? 'Verifying OTP…' : 'Verify OTP & Start Walk'}
+            label={starting ? 'Verifying OTP…' : 'Verify OTP & Start GPS Walk'}
             trailingIcon={starting ? null : 'arrow-forward'}
             disabled={starting}
             onPress={verifyAndStart}
           />
-          <Pressable onPress={() => setConfirmCancel(true)} accessibilityRole="button" hitSlop={8}>
-            <Text style={styles.cancelLink}>Cancel Walk</Text>
-          </Pressable>
+          <View style={styles.footerLinks}>
+            <Pressable onPress={maskedCall} accessibilityRole="button" hitSlop={8} style={styles.inlineRow}>
+              <Icon name="support-agent" size={16} color={colors.slate} />
+              <Text style={styles.footerText}>
+                Call {firstName} (Walker) • Gate Pass #{walker.gatePass ?? '—'}
+              </Text>
+            </Pressable>
+            <Pressable onPress={() => setConfirmCancel(true)} accessibilityRole="button" hitSlop={8}>
+              <Text style={styles.cancelLink}>Cancel</Text>
+            </Pressable>
+          </View>
         </View>
       </View>
 
@@ -227,8 +301,10 @@ export function WalkerEnRouteScreen() {
       {chatOpen ? (
         <WalkerChatSheet
           walker={walker}
-          latest={`Hi! I'm ${walker.name.split(' ')[0]} — on my way to pick up Barnaby 🐾 See you in ${Math.max(1, status.remainingMin)} min${status.remainingMin === 1 ? '' : 's'}.`}
-          quickReplies={['Leash is by the door 🦮', 'Ring the bell twice', 'Thanks! See you soon']}
+          latest={`Hi! I'm ${firstName}, your ${society.shortName} walker 🐾 ${
+            status.arrived ? `I'm at the ${booking.tower} lift lobby.` : `See you at the ${booking.tower} lift lobby in ${Math.max(1, status.remainingMin)} min.`
+          }`}
+          quickReplies={['Harness is by the door 🦺', 'Coming down now', 'Thanks! 🐾']}
           onClose={() => setChatOpen(false)}
         />
       ) : null}
@@ -236,7 +312,7 @@ export function WalkerEnRouteScreen() {
       {confirmCancel ? (
         <ActionSheet
           title="Cancel this walk?"
-          subtitle={`${walker.name.split(' ')[0]} is already on the way. Cancelling now is free.`}
+          subtitle={`${firstName} is already inside ${society.shortName}. Cancelling now is free.`}
           cancelLabel="Keep my walk"
           options={[
             {
@@ -259,8 +335,8 @@ export function WalkerEnRouteScreen() {
 }
 
 /**
- * The walker gliding along the GeoJSON route every animation frame, with the
- * dashed route ahead of them trimmed as they go. Kept separate so only this
+ * The walker gliding along the township path every animation frame, with the
+ * dashed path ahead of them trimmed as they go. Kept separate so only this
  * re-renders per frame, not the whole screen.
  */
 function WalkerOnRoute({
@@ -284,11 +360,7 @@ function WalkerOnRoute({
     <>
       <MapLine id="walker-route" coords={ahead} color={colors.primary} width={4} dash={ROUTE_DASH} />
       <MapMarker lngLat={pointAlong(route, progress)} anchor="bottom" offset={WALKER_PIN_OFFSET}>
-        <WalkerPin
-          initials={walker.initials}
-          name={walker.name.split(' ')[0]}
-          bearing={bearingAlong(route, progress)}
-        />
+        <WalkerPin initials={walker.initials} name={walker.shortName} bearing={bearingAlong(route, progress)} />
       </MapMarker>
     </>
   );
@@ -300,7 +372,7 @@ export function NoActiveWalk({ onBack }: { onBack: () => void }) {
     <SafeAreaView style={[styles.safe, styles.empty]}>
       <Text style={styles.sheetTitle}>No walk in progress</Text>
       <Text style={[styles.meta, styles.emptyText]}>
-        Book a walk from the dashboard and you can follow it live here.
+        Book a society walk from the dashboard and you can follow it live here.
       </Text>
       <PrimaryButton label="Back to dashboard" onPress={onBack} style={styles.emptyButton} />
     </SafeAreaView>
@@ -319,29 +391,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    flexWrap: 'wrap',
   },
   mapArea: {
     overflow: 'hidden',
     backgroundColor: '#FFFDF9',
   },
-  pickupText: {
+  pinText: {
     fontFamily: fonts.bold,
     fontSize: 12,
     color: colors.onPrimary,
   },
-  etaRow: {
+  topPillRow: {
     position: 'absolute',
     top: 12,
     left: 16,
     right: 16,
     alignItems: 'center',
   },
-  etaText: {
+  bottomPillRow: {
+    position: 'absolute',
+    bottom: 42,
+    left: 16,
+    right: 16,
+    alignItems: 'center',
+  },
+  pillText: {
     ...typography.label,
     flexShrink: 1,
   },
-  etaStrong: {
+  pillStrong: {
     color: colors.primary,
     fontFamily: fonts.extrabold,
   },
@@ -367,32 +445,26 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 12,
   },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+  assigned: {
+    fontFamily: fonts.extrabold,
+    fontSize: 11.5,
+    letterSpacing: 0.6,
+    color: colors.successInk,
   },
   sheetTitle: {
     ...typography.title,
     fontSize: 22,
+    marginTop: 4,
   },
   meta: {
     ...typography.bodySm,
-    fontSize: 13,
-  },
-  pawBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.stage,
+    fontSize: 12.5,
   },
   walkerCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    padding: 12,
+    gap: 12,
+    padding: 14,
     borderRadius: radii.lg,
     backgroundColor: '#F4F6FB',
   },
@@ -416,44 +488,114 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.ink,
   },
-  otpCard: {
+  passBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    marginTop: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+    backgroundColor: colors.successTint,
+  },
+  passText: {
+    fontFamily: fonts.bold,
+    fontSize: 11,
+    color: colors.successInk,
+  },
+  heavy: {
+    marginTop: 4,
+    fontFamily: fonts.semibold,
+    fontSize: 11.5,
+    color: colors.amberInk,
+  },
+  actions: {
     gap: 8,
+  },
+  batchLine: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  batchText: {
+    flex: 1,
+    fontFamily: fonts.semibold,
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.ink,
+  },
+  backup: {
+    flexDirection: 'row',
+    gap: 12,
+    padding: 14,
+    borderRadius: radii.lg,
+    backgroundColor: MINT,
+    borderWidth: 1,
+    borderColor: 'rgba(46, 204, 113, 0.3)',
+  },
+  backupIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+  },
+  backupText: {
+    fontFamily: fonts.medium,
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.ink,
+  },
+  backupStrong: {
+    fontFamily: fonts.bold,
+    color: colors.successInk,
+  },
+  simulate: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radii.full,
+    borderWidth: 1.5,
+    borderColor: colors.successInk,
+    backgroundColor: colors.card,
+  },
+  simulateText: {
+    fontFamily: fonts.bold,
+    fontSize: 12.5,
+    color: colors.successInk,
+  },
+  otpCard: {
+    gap: 12,
     padding: 16,
     borderRadius: 20,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: colors.coral,
     backgroundColor: colors.stage,
   },
   otpHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 8,
   },
   otpTitle: {
-    ...typography.subhead,
-  },
-  securityTag: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full,
-    backgroundColor: colors.card,
-  },
-  securityText: {
-    fontFamily: fonts.extrabold,
-    fontSize: 10,
-    letterSpacing: 0.6,
+    fontFamily: fonts.bold,
+    fontSize: 13.5,
+    lineHeight: 19,
     color: colors.coralInk,
   },
   digits: {
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 12,
-    marginTop: 6,
   },
   digitBox: {
-    width: 54,
-    height: 58,
+    width: 56,
+    height: 60,
     borderRadius: radii.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -463,8 +605,19 @@ const styles = StyleSheet.create({
   digit: {
     fontFamily: MONO,
     fontWeight: '700',
-    fontSize: 24,
+    fontSize: 26,
     color: colors.primary,
+  },
+  warning: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radii.sm,
+    backgroundColor: colors.coralTint,
+  },
+  warningText: {
+    fontFamily: fonts.bold,
+    fontSize: 12,
+    color: colors.coralInk,
   },
   footer: {
     gap: 10,
@@ -473,11 +626,20 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     backgroundColor: colors.card,
   },
-  cancelLink: {
-    textAlign: 'center',
+  footerLinks: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  footerText: {
     fontFamily: fonts.semibold,
-    fontSize: 14,
+    fontSize: 12.5,
     color: colors.slate,
+  },
+  cancelLink: {
+    fontFamily: fonts.semibold,
+    fontSize: 13,
+    color: colors.coralInk,
   },
   empty: {
     alignItems: 'center',
@@ -491,5 +653,9 @@ const styles = StyleSheet.create({
   emptyButton: {
     alignSelf: 'stretch',
     marginTop: 12,
+  },
+  pressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.97 }],
   },
 });

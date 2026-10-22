@@ -166,6 +166,58 @@ export function MilestonePin({
   );
 }
 
+const EVENT_DOT = 16;
+
+/** Use with anchor "bottom" so the dot under the chip sits on the coordinate. */
+export const EVENT_PIN_OFFSET: [number, number] = [0, EVENT_DOT / 2];
+
+/**
+ * A proof-of-care stop on the live trail: "💧 7:08 AM", "💩 7:14 AM ✓",
+ * "📸 7:16 AM", always labelled with its timestamp; tap for the detail.
+ */
+export function EventPin({
+  emoji,
+  time,
+  verified = false,
+  detail,
+  color,
+  open,
+  onPress,
+}: {
+  emoji: string;
+  time: string;
+  verified?: boolean;
+  detail: string;
+  color: string;
+  open: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <View pointerEvents="box-none" style={styles.milestoneColumn}>
+      {open ? (
+        <View pointerEvents="none" style={styles.tooltip}>
+          <Text style={styles.tooltipText} numberOfLines={1}>
+            {detail}
+          </Text>
+        </View>
+      ) : null}
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        aria-label={detail}
+        style={({ pressed }) => [styles.eventChip, pressed && styles.pressed]}
+      >
+        <Text style={styles.eventEmoji}>{emoji}</Text>
+        <Text style={styles.eventTime}>{time}</Text>
+        {verified ? <Text style={styles.eventCheck}>✓</Text> : null}
+      </Pressable>
+      <View pointerEvents="none" style={[styles.eventDot, { borderColor: color }]}>
+        <View style={[styles.eventDotInner, { backgroundColor: color }]} />
+      </View>
+    </View>
+  );
+}
+
 const HOME_DOT = 32;
 
 /** Use with anchor "bottom" so the dot's centre sits on the coordinate. */
@@ -344,6 +396,43 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semibold,
     fontSize: 12,
     color: colors.onPrimary,
+  },
+  eventChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radii.full,
+    backgroundColor: colors.card,
+    ...shadows.float,
+  },
+  eventEmoji: {
+    fontSize: 13,
+  },
+  eventTime: {
+    fontFamily: fonts.bold,
+    fontSize: 12,
+    color: colors.ink,
+  },
+  eventCheck: {
+    fontFamily: fonts.extrabold,
+    fontSize: 12,
+    color: colors.success,
+  },
+  eventDot: {
+    width: EVENT_DOT,
+    height: EVENT_DOT,
+    borderRadius: EVENT_DOT / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    backgroundColor: colors.card,
+  },
+  eventDotInner: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   startColumn: {
     alignItems: 'center',

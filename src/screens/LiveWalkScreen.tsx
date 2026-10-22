@@ -1,14 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import {
-  Image,
-  Linking,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-} from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
@@ -22,16 +13,25 @@ import { useBookings, useTrackedWalk, type WalkBooking } from '../booking/Bookin
 import { WalkerChatSheet } from '../booking/WalkerChatSheet';
 import { WalkCompleteModal } from '../booking/WalkCompleteModal';
 import { MapPill, PulsingDot, RoundIconButton, TrackingTopBar } from '../booking/trackingUi';
-import { eventMinute, formatClockTime, formatCountdown, liveWalkStatus } from '../booking/liveWalk';
+import {
+  EVENT_META,
+  SIMULATED_ACTIONS,
+  eventDetail,
+  formatCountdown,
+  liveWalkStatus,
+  walkClock,
+  type WalkEventKind,
+} from '../booking/liveWalk';
 import { boundsOf, headingAlong, pointAlong, splitLine, type GeoLine } from '../booking/geo';
-import { PICKUP_PLACES } from '../booking/pickupPlaces';
+import { SOCIETIES } from '../booking/societies';
+import { BATCHES, INSURANCE_COVER, SUBSCRIPTION_PER_WALK, formatMoney, slotRange } from '../booking/walkPlans';
 import { useWalkLoop, walkLoopWaypoints } from '../booking/walkRoutes';
 import { MapLine, MapMarker, PawMap } from '../maps/PawMap';
 import {
   BARNABY_PIN_OFFSET,
   BarnabyPin,
-  MILESTONE_OFFSET,
-  MilestonePin,
+  EVENT_PIN_OFFSET,
+  EventPin,
   START_DOT_OFFSET,
   StartDot,
   useFrameClock,
@@ -40,38 +40,57 @@ import { arrivalBuzz } from '../booking/WalkArrivalBanner';
 import { NoActiveWalk } from './WalkerEnRouteScreen';
 import { WALKERS, type Walker } from '../data/careTeam';
 
-const CORGI = require('../../assets/corgi_mascot.png');
-const PARK_PHOTO = require('../../assets/corgi_dashboard.jpg');
+/** The mid-walk check-in, captured through the walker's in-app camera. */
+const LIVE_PHOTO = require('../../assets/corgi_dashboard.jpg');
 
 const TICK_MS = 250;
 const COMPLETE_DELAY_MS = 650;
-const SAFETY_LINE = '+18005550199';
-const EMERGENCY_VET = '+14155550199';
-/** Room for the LIVE WALK pill above and Barnaby's pin wherever he is on the loop. */
-const MAP_PADDING = { top: 150, right: 60, bottom: 72, left: 60 };
+/** Room for the insurance pill above and Barnaby's pin wherever he is on the loop. */
+const MAP_PADDING = { top: 120, right: 60, bottom: 90, left: 60 };
+const TRAIL_AHEAD = '#8FAEFF';
+const STAGES = ['gate', 'Garden Loop', 'Return & Handover'] as const;
 
-/** A milestone dropped on the trail at fraction `at` of the loop. */
-interface TrailMarker {
-  key: string;
-  at: number;
-  emoji: string;
-  label: string;
-}
+const EVENT_COLOR: Record<WalkEventKind, string> = {
+  pee: colors.primary,
+  poop: colors.coral,
+  photo: colors.primary,
+};
 
-/** Screen 9 — live walk telemetry with Barnaby and his walker on the park loop. */
+const ACTION_LABEL: Record<WalkEventKind, string> = {
+  pee: '💧 Pee',
+  poop: '💩 Poop',
+  photo: '📸 Photo',
+};
+
+const ACTION_BARK: Record<WalkEventKind, string> = {
+  pee: 'Woof! 💧 Pee logged',
+  poop: 'Woof! 💩 Scooped!',
+  photo: 'Woof! 📸 Say cheese!',
+};
+
+const ACTION_TOAST: Record<WalkEventKind, string> = {
+  pee: '💧 a pee stop',
+  poop: '💩 a poop stop (scooped & binned)',
+  photo: '📸 a live camera photo',
+};
+
+/** A freshly dropped pin shows its detail briefly, then folds back to its time chip. */
+const PIN_DETAIL_MS = 3500;
+
+/** Screen 8 — LIVE_WALK_TRACKER: the society loop with timestamped proof of care. */
 export function LiveWalkScreen() {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const { go } = useAppNavigation();
   const { bark, barkWith, navigate, setWalking, face } = useMascotActions();
   const { hapticsEnabled } = useMascotStatus();
-  const { completeWalk, logWater: recordWater } = useBookings();
+  const { completeWalk, logEvent } = useBookings();
   const booking = useTrackedWalk();
   const { message, show } = useToast();
 
   const [now, setNow] = useState(() => Date.now());
-  const [openMarker, setOpenMarker] = useState<string | null>(null);
-  const [manualMarkers, setManualMarkers] = useState<TrailMarker[]>([]);
+  const [openPin, setOpenPin] = useState<string | null>(null);
+  const [actionIndex, setActionIndex] = useState(0);
   const [chatOpen, setChatOpen] = useState(false);
   const [sosOpen, setSosOpen] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
@@ -89,15 +108,21 @@ export function LiveWalkScreen() {
     };
   }, []);
 
-  // Barnaby walks (walking frames) for as long as this screen tracks the walk.
+  // An opened pin detail folds away on its own, so it never hides Barnaby for long.
+  useEffect(() => {
+    if (!openPin) return undefined;
+    const timer = setTimeout(() => setOpenPin(null), PIN_DETAIL_MS);
+    return () => clearTimeout(timer);
+  }, [openPin]);
+
+  // Barnaby walks (WALKING bob) for as long as this screen tracks the walk.
   useEffect(() => {
     setWalking(true);
     return () => setWalking(false);
   }, [setWalking]);
 
-  // The walker's road around wherever Barnaby was picked up (OSRM foot profile);
-  // telemetry follows how far along it they are.
-  const pickup = booking?.pickup ?? PICKUP_PLACES.home.lngLat;
+  // The township loop from Barnaby's lobby; telemetry follows how far along it they are.
+  const pickup = booking?.pickup ?? SOCIETIES.hiranandani.center;
   const loop = useWalkLoop(pickup);
   const status = booking ? liveWalkStatus(booking, now, loop.lengthKm) : null;
 
@@ -116,10 +141,7 @@ export function LiveWalkScreen() {
     }
   }, [loop, progressNow, done, face, setWalking]);
 
-  // Only the road the walker has actually taken: start → where Barnaby is now.
-  const { done: trail } = splitLine(loop, progressNow);
-
-  // Back at the start: buzz, Barnaby woofs, and the arrival sheet asks for the drop-off.
+  // Back at the lobby: buzz, Barnaby woofs, and the arrival sheet asks for the drop-off.
   const [arrivalSeen, setArrivalSeen] = useState(false);
   const announced = useRef(false);
   useEffect(() => {
@@ -133,40 +155,28 @@ export function LiveWalkScreen() {
     return <NoActiveWalk onBack={() => go('exitTracking')} />;
   }
 
+  const society = SOCIETIES[booking.society];
   const walker = WALKERS[booking.walkerId];
   const firstName = walker.name.split(' ')[0];
-  const mapHeight = Math.round(windowHeight * 0.47);
+  const mapHeight = Math.round(windowHeight * 0.46);
   const percent = Math.round(status.progress * 100);
-  const startMs = booking.startedAt ?? now;
-  const returnMs = startMs + booking.minutes * 60 * 1000;
-  const photoTaken = status.reached.some((event) => event.kind === 'photo');
+  const { done: trail, rest: ahead } = splitLine(loop, status.progress);
+  const photo = status.photos[0] ?? null;
+  const stageIndex = status.progress >= 0.85 ? 2 : status.progress >= 0.12 ? 1 : 0;
+  const nextAction = SIMULATED_ACTIONS[actionIndex % SIMULATED_ACTIONS.length];
+  const slotName = booking.batch ? BATCHES[booking.batch].label.replace(' Batch', '') : 'Express';
 
-  const markers: TrailMarker[] = [
-    ...status.reached
-      .filter((event) => event.pin)
-      .map((event) => ({
-        key: event.kind,
-        at: event.at,
-        emoji: event.pin ?? '',
-        label: `${event.pin} ${event.title} • ${eventMinute(event, booking.minutes)}`,
-      })),
-    ...manualMarkers,
-  ];
-
-  const logWater = () => {
-    if (status.done) return;
-    recordWater(booking.id);
-    const minute = Math.round(status.progress * booking.minutes);
-    setManualMarkers((current) => [
-      ...current,
-      { key: `water-${current.length}`, at: status.progress, emoji: '💧', label: `💧 Water logged • ${minute}m` },
-    ]);
-    show('Water break logged 💧');
-  };
-
-  const openPhoto = () => {
-    if (photoTaken) setPhotoOpen(true);
-    else show(`No photos yet — ${firstName} snaps one at the park 📸`);
+  const simulateAction = () => {
+    if (status.done) {
+      show('The walk is over — no more stops to log');
+      return;
+    }
+    const kind = nextAction;
+    logEvent(booking.id, kind, status.progress);
+    setActionIndex((index) => index + 1);
+    setOpenPin(`logged-${booking.loggedEvents.length}`);
+    barkWith(ACTION_BARK[kind]);
+    show(`${firstName} logged ${ACTION_TOAST[kind]} at ${walkClock(booking, status.progress)}`);
   };
 
   const complete = () => {
@@ -177,66 +187,72 @@ export function LiveWalkScreen() {
     completeTimer.current = setTimeout(() => navigate(() => setCompleted(true)), COMPLETE_DELAY_MS);
   };
 
-  const call = (number: string) =>
-    Linking.openURL(`tel:${number}`).catch(() => show('Calling isn’t available here'));
+  const masked = (who: string) => show(`📞 Connecting to ${who} via PawPal’s masked line…`);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <TrackingTopBar
-        title="Live Walker Tracking"
+        title="Live Society Walk"
         onBack={() => go('exitTracking')}
-        onInfo={() => show(`Live GPS · blue is the road ${firstName} has walked so far`)}
+        onInfo={() => show('Every stop is GPS-stamped by the walker’s app — gallery uploads are disabled')}
       />
 
       <View style={[styles.mapArea, { height: mapHeight }]}>
         <PawMap
           initialCenter={pickup}
-          initialBounds={{ bounds: boundsOf(walkLoopWaypoints(pickup)), padding: MAP_PADDING }}
+          initialBounds={{ bounds: boundsOf(walkLoopWaypoints(pickup, 0.42)), padding: MAP_PADDING }}
           style={StyleSheet.absoluteFill}
         >
+          <MapLine id="walk-ahead" coords={ahead} color={TRAIL_AHEAD} width={4} dash={[1.5, 1.5]} opacity={0.9} />
           <MapLine id="walk-trail" coords={trail} color={colors.primary} width={5} />
 
           <MapMarker lngLat={pickup} anchor="bottom" offset={START_DOT_OFFSET}>
             <StartDot />
           </MapMarker>
 
-          {/* Milestones dropped at their exact spot on the trail */}
-          {markers.map((marker) => {
-            const open = openMarker === marker.key;
+          {status.events.map((event) => {
+            const open = openPin === event.id;
+            const time = walkClock(booking, event.at);
             return (
-              <MapMarker
-                key={marker.key}
-                lngLat={pointAlong(loop, marker.at)}
-                anchor="bottom"
-                offset={MILESTONE_OFFSET}
-              >
-                <MilestonePin
-                  emoji={marker.emoji}
-                  label={marker.label}
+              <MapMarker key={event.id} lngLat={pointAlong(loop, event.at)} anchor="bottom" offset={EVENT_PIN_OFFSET}>
+                <EventPin
+                  emoji={EVENT_META[event.kind].emoji}
+                  time={time}
+                  verified={event.kind === 'poop'}
+                  color={EVENT_COLOR[event.kind]}
+                  detail={`${EVENT_META[event.kind].title} (${time} — ${eventDetail(booking, event.kind)})`}
                   open={open}
-                  onPress={() => setOpenMarker(open ? null : marker.key)}
+                  onPress={() => setOpenPin(open ? null : event.id)}
                 />
               </MapMarker>
             );
           })}
 
-          <BarnabyOnLoop
-            loop={loop}
-            booking={booking}
-            walker={walker}
-            running={!status.done}
-            active={!completed}
-          />
+          <BarnabyOnLoop loop={loop} booking={booking} walker={walker} running={!status.done} active={!completed} />
         </PawMap>
 
         <View style={styles.liveRow} pointerEvents="none">
           <MapPill style={styles.livePill}>
             <PulsingDot />
-            <Text style={styles.liveText} numberOfLines={1}>
-              LIVE WALK <Text style={styles.liveVerified}>• OTP Verified</Text>{' '}
-              <Text style={styles.livePhase}>• {status.phase}</Text>
+            <Text style={styles.liveText} numberOfLines={2}>
+              LIVE SOCIETY WALK{' '}
+              <Text style={styles.liveCover}>• 🛡️ {formatMoney(INSURANCE_COVER)} Vet Insurance Cover ACTIVE</Text>
             </Text>
           </MapPill>
+        </View>
+
+        <View style={styles.simulateRow} pointerEvents="box-none">
+          <Pressable
+            onPress={simulateAction}
+            accessibilityRole="button"
+            aria-label={`Simulate walker action: drop a ${nextAction} pin`}
+            style={({ pressed }) => [styles.simulate, status.done && styles.simulateDone, pressed && styles.pressed]}
+          >
+            <Icon name="add-location-alt" size={17} color={colors.onPrimary} />
+            <Text style={styles.simulateText}>
+              Simulate Walker Action <Text style={styles.simulateNext}>+ {ACTION_LABEL[nextAction]} Pin</Text>
+            </Text>
+          </Pressable>
         </View>
       </View>
 
@@ -247,20 +263,15 @@ export function LiveWalkScreen() {
             <View style={styles.flex}>
               <View style={styles.countLine}>
                 <Text style={styles.countdown}>{formatCountdown(status.remainingSec)}</Text>
-                <Text style={styles.meta}>{status.done ? 'back home' : 'remaining'}</Text>
+                <Text style={styles.remaining}>{status.done ? 'Back home' : 'Remaining'}</Text>
               </View>
-              <View style={styles.inlineRow}>
-                <Icon name="schedule" size={15} color={colors.primary} />
-                <Text style={styles.returnText}>
-                  {status.done ? 'Returned home at' : 'Est. return home at'} {formatClockTime(returnMs)}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.walkPill}>
-              <Icon name="timer" size={15} color={colors.coralInk} />
-              <Text style={styles.walkPillText}>
-                {booking.minutes} Min Walk • {percent}%
+              <Text style={styles.meta}>
+                {booking.minutes}-Min {slotName} Slot ({slotRange(booking.slotStart, booking.minutes)})
               </Text>
+            </View>
+            <View style={styles.coverPill}>
+              <Icon name="verified-user" size={16} color={colors.successInk} />
+              <Text style={styles.coverText}>Accident Cover{'\n'}Active</Text>
             </View>
           </View>
 
@@ -268,103 +279,106 @@ export function LiveWalkScreen() {
             <View style={styles.track}>
               <View style={[styles.fill, { width: `${percent}%` }]} />
             </View>
-            <View style={[styles.trackMarker, { left: `${percent}%` }]} pointerEvents="none">
-              <Image source={CORGI} style={styles.trackCorgi} />
-            </View>
-            <View style={styles.trackLabels}>
-              <Text style={styles.trackLabel}>Start ({formatClockTime(startMs)})</Text>
-              <Text style={[styles.trackLabel, styles.trackNow]}>🐾 {status.done ? 'Home' : 'Now'}</Text>
-              <Text style={styles.trackLabel}>🏠 Home ({formatClockTime(returnMs)})</Text>
+            <View style={styles.stageLabels}>
+              {STAGES.map((stage, index) => (
+                <Text
+                  key={stage}
+                  style={[
+                    styles.stageLabel,
+                    index === 1 && styles.stageCenter,
+                    index === 2 && styles.stageRight,
+                    index === stageIndex && styles.stageActive,
+                    index > stageIndex && styles.stageFuture,
+                  ]}
+                >
+                  {stage === 'gate' ? `${booking.tower} Gate` : stage}
+                </Text>
+              ))}
             </View>
           </View>
 
           <View style={styles.bento}>
-            <View style={[styles.tile, styles.tileBlue]}>
+            <View style={styles.tile}>
               <View style={styles.tileHead}>
-                <Text style={styles.tileLabel}>DISTANCE</Text>
                 <Icon name="route" size={16} color={colors.primary} />
+                <Text style={styles.tileLabel}>Distance & Pace</Text>
               </View>
               <Text style={styles.tileValue}>
                 {status.km.toFixed(2)} <Text style={styles.tileUnit}>km</Text>
               </Text>
-              <Text style={styles.tileMeta}>🐾 Pace: Brisk</Text>
+              <Text style={styles.tileMeta}>{status.pace ? `${Math.round(status.pace)} min/km 🐾` : 'Warming up 🐾'}</Text>
             </View>
-            <View style={[styles.tile, styles.tileSlate]}>
+            <View style={styles.tile}>
               <View style={styles.tileHead}>
-                <Text style={styles.tileLabel}>ENERGY</Text>
-                <Icon name="local-fire-department" size={16} color={colors.coral} />
+                <Icon name="water-drop" size={16} color={colors.coral} />
+                <Text style={styles.tileLabel}>Potty Count</Text>
               </View>
-              <Text style={styles.tileValue}>
-                {status.kcal} <Text style={styles.tileUnit}>kcal</Text>
+              <Text style={[styles.tileValue, styles.tileValueSmall]} numberOfLines={1}>
+                {status.pee}💧 · {status.poop}💩
               </Text>
-              <Text style={[styles.tileMeta, { color: colors.coralInk }]}>🔥 Active burn</Text>
+              <Text style={[styles.tileMeta, status.poop > 0 && styles.tileGood]}>
+                {status.poop > 0 ? '✓ Bagged & binned' : 'Waiting for stops'}
+              </Text>
             </View>
-            <View style={[styles.tile, styles.tileBlue]}>
+            <View style={styles.tile}>
               <View style={styles.tileHead}>
-                <Text style={styles.tileLabel}>POTTY & WATER</Text>
+                <Icon name="health-and-safety" size={16} color={colors.successInk} />
+                <Text style={styles.tileLabel}>Insurance</Text>
               </View>
-              <Text style={styles.tileSmallValue}>
-                {status.pee} Pee • {status.poo} Poo
-              </Text>
-              <View style={styles.tileFoot}>
-                <Text style={styles.tileMeta}>💧 {status.water}x</Text>
-                <Pressable
-                  onPress={logWater}
-                  accessibilityRole="button"
-                  aria-label="Log a water break"
-                  hitSlop={6}
-                  style={({ pressed }) => [styles.logPill, pressed && styles.pressed]}
-                >
-                  <Text style={styles.logText}>+ Log</Text>
-                </Pressable>
-              </View>
+              <Text style={styles.tileValue}>₹10K</Text>
+              <Text style={[styles.tileMeta, styles.tileGood]}>{status.done ? 'Closed safely ✓' : 'Active • GPS stamped'}</Text>
             </View>
           </View>
 
-          <View style={styles.update}>
-            <View style={styles.updateRow}>
-              <View>
-                <Avatar initials={walker.initials} tint={walker.tint} ink={walker.ink} size={46} />
-                <View style={styles.verifiedBadge}>
-                  <Icon name="check" size={11} color={colors.onPrimary} />
-                </View>
-              </View>
+          {photo ? (
+            <Pressable
+              onPress={() => setPhotoOpen(true)}
+              accessibilityRole="button"
+              aria-label="Open the live check-in photo"
+              style={({ pressed }) => [styles.proof, pressed && styles.pressedSoft]}
+            >
+              <Image source={LIVE_PHOTO} style={styles.proofPhoto} resizeMode="cover" />
               <View style={styles.flex}>
                 <View style={styles.spaceBetween}>
-                  <Text style={styles.updateName}>{walker.name}</Text>
-                  <Text style={styles.meta}>{status.updateAgo}</Text>
+                  <Text style={styles.proofLabel}>MANDATORY IN-APP CHECK-IN</Text>
+                  <Text style={styles.proofTime}>{walkClock(booking, photo.at)}</Text>
                 </View>
-                <Text style={styles.updateText}>“{status.update.text}”</Text>
+                <Text style={styles.proofTitle}>Barnaby is having a great stroll!</Text>
+                <Text style={styles.proofQuote} numberOfLines={2}>
+                  “Doing his morning stretch on the lawn — harness snug ✓”
+                </Text>
+                <Text style={styles.proofMeta}>
+                  Captured via In-App Live Camera (Gallery Upload Disabled) • {walkClock(booking, photo.at)}
+                </Text>
               </View>
-              {status.update.photo ? (
-                <Pressable onPress={openPhoto} accessibilityRole="button" aria-label="View walk photo">
-                  <Image source={PARK_PHOTO} style={styles.updatePhoto} resizeMode="cover" />
-                </Pressable>
-              ) : null}
+            </Pressable>
+          ) : (
+            <View style={[styles.proof, styles.proofPending]}>
+              <View style={styles.proofIcon}>
+                <Icon name="photo-camera" size={24} color={colors.coral} />
+              </View>
+              <View style={styles.flex}>
+                <Text style={styles.proofLabel}>MANDATORY HALFWAY LIVE PHOTO</Text>
+                <Text style={styles.proofTitle}>Due at {walkClock(booking, 0.5)}</Text>
+                <Text style={styles.proofMeta}>
+                  {firstName} must snap Barnaby in his harness with the in-app camera — gallery uploads are disabled.
+                </Text>
+              </View>
             </View>
-            <View style={styles.updateActions}>
-              <Pressable
-                onPress={() => setChatOpen(true)}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.messagePill, pressed && styles.pressed]}
-              >
-                <Icon name="chat" size={18} color={colors.primary} />
-                <Text style={styles.messageText}>Message {firstName}</Text>
-              </Pressable>
-              <RoundIconButton
-                icon="call"
-                label={`Call ${walker.name}`}
-                onPress={() => call(walker.phone)}
-                tint={colors.card}
-              />
-              <RoundIconButton
-                icon="photo-camera"
-                label="View walk photo"
-                onPress={openPhoto}
-                tint={colors.card}
-                ink={colors.coral}
-              />
+          )}
+
+          <View style={styles.update}>
+            <Avatar initials={walker.initials} tint={walker.tint} ink={walker.ink} size={42} />
+            <View style={styles.flex}>
+              <Text style={styles.updateName}>
+                {walker.name} • {society.shortName}
+              </Text>
+              <Text style={styles.updateText} numberOfLines={2}>
+                “{status.update.text}”
+              </Text>
             </View>
+            <RoundIconButton icon="chat" label={`Chat with ${walker.name}`} onPress={() => setChatOpen(true)} tint={colors.card} />
+            <RoundIconButton icon="call" label={`Call ${walker.name} (masked)`} onPress={() => masked(firstName)} tint={colors.card} />
           </View>
         </ScrollView>
 
@@ -372,21 +386,21 @@ export function LiveWalkScreen() {
           <Pressable
             onPress={() => setSosOpen(true)}
             accessibilityRole="button"
-            aria-label="SOS / Support"
+            aria-label="SOS Vet"
             style={({ pressed }) => [styles.sos, pressed && styles.pressed]}
           >
-            <Icon name="security" size={20} color={colors.coral} />
-            <Text style={styles.sosText}>SOS / Support</Text>
+            <Text style={styles.sosStar}>✱</Text>
+            <Text style={styles.sosText}>SOS Vet</Text>
           </Pressable>
           <Pressable
             onPress={complete}
             disabled={completing}
             accessibilityRole="button"
-            aria-label="Complete walk and drop-off"
+            aria-label="Complete drop-off"
             style={({ pressed }) => [styles.complete, pressed && styles.completePressed]}
           >
             <Text style={styles.completeText} numberOfLines={1}>
-              Complete & Drop-off
+              Complete Drop-Off
             </Text>
             <Icon name="arrow-forward" size={18} color={colors.onPrimary} />
           </Pressable>
@@ -395,13 +409,12 @@ export function LiveWalkScreen() {
 
       <Toast message={message} bottomOffset={100} />
 
-      {photoOpen ? (
+      {photoOpen && photo ? (
         <Pressable style={styles.photoBackdrop} onPress={() => setPhotoOpen(false)} aria-label="Close photo">
           <View style={styles.photoCard}>
-            <Image source={PARK_PHOTO} style={styles.photo} resizeMode="cover" />
-            <Text style={styles.photoCaption}>
-              📸 Barnaby at the park · snapped by {firstName}
-            </Text>
+            <Image source={LIVE_PHOTO} style={styles.photo} resizeMode="cover" />
+            <Text style={styles.photoCaption}>📸 Barnaby in his chest harness • {walkClock(booking, photo.at)}</Text>
+            <Text style={styles.meta}>In-App Live Camera • GPS {pointAlong(loop, photo.at).map((n) => n.toFixed(4)).reverse().join(', ')}</Text>
             <Text style={styles.meta}>Tap anywhere to close</Text>
           </View>
         </Pressable>
@@ -411,15 +424,15 @@ export function LiveWalkScreen() {
         <WalkerChatSheet
           walker={walker}
           latest={status.update.text}
-          quickReplies={['Thank you! 🐾', 'Extra treat for good boy?', 'Take a photo please 📸']}
+          quickReplies={['Thank you! 🐾', 'One more lap please', 'Please send a photo 📸']}
           onClose={() => setChatOpen(false)}
         />
       ) : null}
 
       {status.done && !arrivalSeen && !completing && !completed ? (
         <ActionSheet
-          title="🏠 Barnaby is back home!"
-          subtitle={`${firstName} just walked Barnaby back to the start — ${status.km.toFixed(2)} km in ${booking.minutes} min.`}
+          title={`🏠 Barnaby is back at ${booking.tower}!`}
+          subtitle={`${firstName} finished the loop — ${status.km.toFixed(2)} km, ${status.pee} pee • ${status.poop} poop, photo-verified.`}
           cancelLabel="Not now"
           options={[
             {
@@ -439,36 +452,36 @@ export function LiveWalkScreen() {
 
       {sosOpen ? (
         <ActionSheet
-          title="Need help?"
-          subtitle="PawPal Safety is on call 24/7 during every walk."
+          title="SOS Vet"
+          subtitle={`Your ${formatMoney(INSURANCE_COVER)} vet & accident cover is active for this walk.`}
           options={[
             {
-              icon: 'call',
-              label: `Call ${walker.name}`,
-              detail: 'Talk to your walker right now',
+              icon: 'local-hospital',
+              label: 'PawPal Vet Line (24/7)',
+              detail: 'A vet on call in under a minute — covered',
+              tone: 'coral',
               onPress: () => {
                 setSosOpen(false);
-                call(walker.phone);
+                masked('the PawPal vet line');
+              },
+            },
+            {
+              icon: 'call',
+              label: `Call ${firstName} now`,
+              detail: 'Masked number — talk to your walker',
+              onPress: () => {
+                setSosOpen(false);
+                masked(firstName);
               },
             },
             {
               icon: 'security',
-              label: 'PawPal Safety Line (24/7)',
-              detail: 'Report a problem with this walk',
+              label: 'Report an issue with this walk',
+              detail: 'PawPal Safety reviews it with the GPS trail',
               tone: 'coral',
               onPress: () => {
                 setSosOpen(false);
-                call(SAFETY_LINE);
-              },
-            },
-            {
-              icon: 'local-hospital',
-              label: 'Emergency Vet · Mission Pet ER',
-              detail: 'Open 24/7 · 1.2 km from the route',
-              tone: 'coral',
-              onPress: () => {
-                setSosOpen(false);
-                call(EMERGENCY_VET);
+                show('🛡️ Report sent — PawPal Safety will call you shortly');
               },
             },
           ]}
@@ -482,7 +495,7 @@ export function LiveWalkScreen() {
           minutesWalked={status.elapsedSec / 60}
           km={status.km}
           kcal={status.kcal}
-          fare={booking.total}
+          fare={booking.tier === 'subscription' ? SUBSCRIPTION_PER_WALK : booking.total}
           onDone={(rating, tip) => {
             completeWalk(booking.id, { distanceKm: Math.round(status.km * 100) / 100, rating, tip });
             go('exitTracking');
@@ -523,13 +536,7 @@ function BarnabyOnLoop({
           </Text>
         }
         badge={
-          <Avatar
-            initials={walker.initials}
-            tint={colors.card}
-            ink={colors.primary}
-            size={30}
-            style={styles.walkerBadge}
-          />
+          <Avatar initials={walker.initials} tint={colors.card} ink={colors.primary} size={30} style={styles.walkerBadge} />
         }
       />
     </MapMarker>
@@ -543,11 +550,6 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1,
-  },
-  inlineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
   },
   spaceBetween: {
     flexDirection: 'row',
@@ -576,24 +578,50 @@ const styles = StyleSheet.create({
     top: 12,
     left: 16,
     right: 16,
+    alignItems: 'center',
   },
   livePill: {
-    alignSelf: 'stretch',
+    maxWidth: '100%',
   },
   liveText: {
-    flex: 1,
+    flexShrink: 1,
     fontFamily: fonts.extrabold,
     fontSize: 12,
-    letterSpacing: 0.4,
+    letterSpacing: 0.3,
     color: colors.ink,
   },
-  liveVerified: {
-    color: colors.primary,
-  },
-  livePhase: {
-    fontFamily: fonts.semibold,
-    color: colors.slate,
+  liveCover: {
+    fontFamily: fonts.bold,
+    color: colors.successInk,
     letterSpacing: 0,
+  },
+  simulateRow: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 40,
+    alignItems: 'center',
+  },
+  simulate: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: radii.full,
+    backgroundColor: colors.ink,
+    ...shadows.float,
+  },
+  simulateDone: {
+    opacity: 0.5,
+  },
+  simulateText: {
+    fontFamily: fonts.bold,
+    fontSize: 12.5,
+    color: colors.onPrimary,
+  },
+  simulateNext: {
+    color: colors.amber,
   },
   sheet: {
     flex: 1,
@@ -612,7 +640,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.inputBorder,
   },
   sheetContent: {
-    gap: 16,
+    gap: 14,
     paddingHorizontal: 18,
     paddingTop: 12,
     paddingBottom: 12,
@@ -635,24 +663,25 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontVariant: ['tabular-nums'],
   },
-  returnText: {
-    fontFamily: fonts.semibold,
-    fontSize: 13,
+  remaining: {
+    fontFamily: fonts.bold,
+    fontSize: 15,
     color: colors.primary,
   },
-  walkPill: {
+  coverPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: radii.full,
-    backgroundColor: colors.coralTint,
+    backgroundColor: colors.successTint,
   },
-  walkPillText: {
+  coverText: {
     fontFamily: fonts.bold,
-    fontSize: 12,
-    color: colors.coralInk,
+    fontSize: 11.5,
+    lineHeight: 14,
+    color: colors.successInk,
   },
   track: {
     height: 10,
@@ -665,36 +694,27 @@ const styles = StyleSheet.create({
     borderRadius: radii.full,
     backgroundColor: colors.primary,
   },
-  trackMarker: {
-    position: 'absolute',
-    top: -12,
-    marginLeft: -15,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    overflow: 'hidden',
-    backgroundColor: colors.stage,
-    borderWidth: 2,
-    borderColor: colors.card,
-    ...shadows.soft,
-  },
-  trackCorgi: {
-    width: 32,
-    height: 32,
-    marginLeft: -2,
-  },
-  trackLabels: {
+  stageLabels: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 12,
+    marginTop: 8,
   },
-  trackLabel: {
-    ...typography.bodySm,
-    fontSize: 11,
-  },
-  trackNow: {
-    color: colors.primary,
+  stageLabel: {
+    flex: 1,
     fontFamily: fonts.bold,
+    fontSize: 11.5,
+    color: colors.slate,
+  },
+  stageCenter: {
+    textAlign: 'center',
+  },
+  stageRight: {
+    textAlign: 'right',
+  },
+  stageActive: {
+    color: colors.primary,
+  },
+  stageFuture: {
+    color: colors.placeholder,
   },
   bento: {
     flexDirection: 'row',
@@ -705,117 +725,110 @@ const styles = StyleSheet.create({
     gap: 4,
     padding: 12,
     borderRadius: radii.md,
-  },
-  tileBlue: {
-    backgroundColor: colors.primaryTint,
-  },
-  tileSlate: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F4F6FB',
   },
   tileHead: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 4,
   },
   tileLabel: {
-    fontFamily: fonts.extrabold,
-    fontSize: 9,
-    letterSpacing: 0.6,
-    color: colors.slate,
+    flexShrink: 1,
+    fontFamily: fonts.bold,
+    fontSize: 10.5,
+    color: colors.ink,
   },
   tileValue: {
     fontFamily: fonts.extrabold,
-    fontSize: 19,
+    fontSize: 18,
     color: colors.ink,
+  },
+  tileValueSmall: {
+    fontSize: 16,
   },
   tileUnit: {
     fontFamily: fonts.semibold,
     fontSize: 12,
     color: colors.slate,
   },
-  tileSmallValue: {
-    fontFamily: fonts.extrabold,
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.ink,
-  },
   tileMeta: {
     fontFamily: fonts.semibold,
     fontSize: 11,
-    color: colors.primary,
+    color: colors.slate,
   },
-  tileFoot: {
+  tileGood: {
+    color: colors.successInk,
+  },
+  proof: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  logPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full,
-    backgroundColor: colors.card,
-  },
-  logText: {
-    fontFamily: fonts.bold,
-    fontSize: 11,
-    color: colors.primary,
-  },
-  update: {
     gap: 12,
     padding: 14,
     borderRadius: 18,
     backgroundColor: colors.stage,
   },
-  updateRow: {
-    flexDirection: 'row',
-    gap: 12,
+  proofPending: {
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: colors.coral,
   },
-  verifiedBadge: {
-    position: 'absolute',
-    right: -2,
-    bottom: -2,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.success,
-    borderWidth: 2,
-    borderColor: colors.stage,
-  },
-  updateName: {
-    ...typography.subhead,
-  },
-  updateText: {
-    ...typography.body,
-    color: colors.ink,
-  },
-  updatePhoto: {
-    width: 64,
-    height: 64,
+  proofPhoto: {
+    width: 72,
+    height: 72,
     borderRadius: radii.md,
     borderWidth: 2,
     borderColor: colors.card,
   },
-  updateActions: {
-    flexDirection: 'row',
+  proofIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 10,
-  },
-  messagePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    height: 44,
-    borderRadius: radii.full,
+    justifyContent: 'center',
     backgroundColor: colors.card,
   },
-  messageText: {
+  proofLabel: {
+    fontFamily: fonts.extrabold,
+    fontSize: 10.5,
+    letterSpacing: 0.6,
+    color: colors.coralInk,
+  },
+  proofTime: {
     fontFamily: fonts.bold,
-    fontSize: 13,
-    color: colors.primary,
+    fontSize: 12,
+    color: colors.slate,
+  },
+  proofTitle: {
+    ...typography.subhead,
+    marginTop: 2,
+  },
+  proofQuote: {
+    fontFamily: fonts.medium,
+    fontStyle: 'italic',
+    fontSize: 12.5,
+    color: colors.slate,
+    marginTop: 2,
+  },
+  proofMeta: {
+    fontFamily: fonts.semibold,
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.successInk,
+    marginTop: 4,
+  },
+  update: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: radii.lg,
+    backgroundColor: '#F4F6FB',
+  },
+  updateName: {
+    ...typography.label,
+  },
+  updateText: {
+    ...typography.bodySm,
+    color: colors.ink,
   },
   footer: {
     flexDirection: 'row',
@@ -829,14 +842,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     borderRadius: radii.full,
-    backgroundColor: '#FFF0ED',
+    backgroundColor: '#FFE1DA',
+  },
+  sosStar: {
+    fontFamily: fonts.extrabold,
+    fontSize: 20,
+    color: colors.coralInk,
   },
   sosText: {
     fontFamily: fonts.bold,
-    fontSize: 13,
-    color: colors.coral,
+    fontSize: 15,
+    color: colors.coralInk,
   },
   complete: {
     flex: 1,
@@ -887,6 +905,9 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.85,
-    transform: [{ scale: 0.95 }],
+    transform: [{ scale: 0.96 }],
+  },
+  pressedSoft: {
+    opacity: 0.9,
   },
 });

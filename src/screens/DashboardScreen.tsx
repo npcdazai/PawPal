@@ -16,8 +16,8 @@ import { MascotDockSlot } from '../mascot/MascotDockSlot';
 import { useMascotActions } from '../mascot/MascotProvider';
 import { Avatar } from '../components/Avatar';
 import { useBookings, type WalkBooking, type WalkStatus } from '../booking/BookingsProvider';
-import { formatMoney } from '../booking/walkPlans';
-import { PICKUP_PLACES } from '../booking/pickupPlaces';
+import { SUBSCRIPTION_PER_WALK, TRIAL_PRICE, formatMoney } from '../booking/walkPlans';
+import { SOCIETIES } from '../booking/societies';
 import { WALKERS, WALKER_IDS, type WalkerId } from '../data/careTeam';
 
 const WALK_GOAL_KM = 4;
@@ -420,7 +420,7 @@ const CARD_COPY: Record<
 function WalkerBookingCard({ booking, onBook, onRebook, onTrack }: WalkerBookingCardProps) {
   if (booking && booking.status !== 'cancelled') {
     const walker = WALKERS[booking.walkerId];
-    const place = PICKUP_PLACES[booking.placeKey];
+    const society = SOCIETIES[booking.society];
     const copy = CARD_COPY[booking.status];
     const tracking = booking.status === 'enRoute' || booking.status === 'inProgress';
     const detail =
@@ -429,7 +429,7 @@ function WalkerBookingCard({ booking, onBook, onRebook, onTrack }: WalkerBooking
         : booking.status === 'inProgress'
           ? `with ${walker.shortName} · neighbourhood walk`
           : booking.status === 'enRoute'
-            ? `${walker.shortName} ⭐ ${walker.rating.toFixed(1)} · heading to ${place.emoji} ${booking.placeLabel}`
+            ? `${walker.shortName} ⭐ ${walker.rating.toFixed(1)} · heading to ${booking.tower} lobby`
             : `${walker.shortName} ⭐ ${walker.rating.toFixed(1)} · ${booking.whenLabel}`;
     return (
       <View style={[styles.card, styles.walkerCard]}>
@@ -442,14 +442,23 @@ function WalkerBookingCard({ booking, onBook, onRebook, onTrack }: WalkerBooking
             </View>
             <Text style={styles.cardMeta}>{detail}</Text>
             <Text style={styles.cardMeta}>
-              {booking.minutes} min walk · {place.emoji} {booking.placeLabel}
+              {booking.minutes} min walk · 🏘️ {society.shortName}, {booking.tower}
             </Text>
           </View>
         </View>
         <View style={styles.walkerBottom}>
           <Text style={styles.walkerTotal}>
-            {formatMoney(booking.total + (booking.tip ?? 0))}
+            {booking.tier === 'subscription'
+              ? formatMoney(SUBSCRIPTION_PER_WALK + (booking.tip ?? 0))
+              : formatMoney(booking.total + (booking.tip ?? 0))}
+            {booking.tier === 'subscription' ? <Text style={styles.cardMeta}>/walk</Text> : null}
             {booking.tip ? <Text style={styles.cardMeta}> incl. tip</Text> : null}
+            {booking.payment ? (
+              <Text style={styles.cardMeta}>
+                {booking.tier === 'subscription' ? ' · Monthly plan paid via UPI' : ' · Paid via UPI'}
+                {booking.payment.verified ? '' : ` (ref …${booking.payment.reference.slice(-4)})`}
+              </Text>
+            ) : null}
           </Text>
           <Pressable
             onPress={() => (tracking ? onTrack(booking.status) : onRebook(booking.walkerId))}
@@ -477,7 +486,10 @@ function WalkerBookingCard({ booking, onBook, onRebook, onTrack }: WalkerBooking
         </View>
         <View style={styles.walkerCopy}>
           <Text style={styles.walkerTitle}>🦮 Book a Dog Walker</Text>
-          <Text style={styles.cardMeta}>Instant walks arrive in ~15 mins · from $15</Text>
+          <Text style={styles.cardMeta}>
+            Society walkers, zero travel delay · {formatMoney(SUBSCRIPTION_PER_WALK)}/walk · Trial{' '}
+            {formatMoney(TRIAL_PRICE)}
+          </Text>
         </View>
         <View style={styles.avatarStack}>
           {WALKER_IDS.slice(0, 3).map((id, index) => {

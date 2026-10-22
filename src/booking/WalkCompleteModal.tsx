@@ -9,7 +9,7 @@ import { NATIVE_DRIVER } from '../theme/motion';
 import type { Walker } from '../data/careTeam';
 import { formatMoney } from './walkPlans';
 
-const TIPS = [2, 5, 10, 0] as const;
+const TIPS = [20, 50, 100, 0] as const;
 const COMPACT_HEIGHT = 740;
 
 interface WalkCompleteModalProps {
@@ -28,7 +28,7 @@ export function WalkCompleteModal({ walker, minutesWalked, km, kcal, fare, onDon
   const badgeSize = compact ? 116 : 140;
   const [enter] = useState(() => new Animated.Value(0));
   const [rating, setRating] = useState(5);
-  const [tip, setTip] = useState<number>(5);
+  const [tip, setTip] = useState<number>(50);
   const firstName = walker.name.split(' ')[0];
 
   useEffect(() => {
@@ -105,7 +105,7 @@ export function WalkCompleteModal({ walker, minutesWalked, km, kcal, fare, onDon
                     style={[styles.tip, selected && styles.tipSelected]}
                   >
                     <Text style={[styles.tipText, selected && styles.tipTextSelected]}>
-                      {amount === 0 ? 'No tip' : `$${amount}`}
+                      {amount === 0 ? 'No tip' : formatMoney(amount)}
                     </Text>
                   </Pressable>
                 );

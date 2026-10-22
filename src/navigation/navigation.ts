@@ -83,10 +83,10 @@ export const NAVIGATION = {
     tasks: {
       tabBar: false,
       routes: {
-        walkConfig: { name: 'book-walk', path: '/book-walk', title: 'Book a Walk' },
-        pickupLocation: { name: 'pickup-location', path: '/pickup-location', title: 'Pickup Location' },
-        walkerEnRoute: { name: 'walk-tracking', path: '/walk-tracking', title: 'Live Walker Tracking' },
-        liveWalk: { name: 'live-walk', path: '/live-walk', title: 'Live Walk' },
+        societySetup: { name: 'book-walk', path: '/book-walk', title: 'Society & Behavioral Profile' },
+        walkPlan: { name: 'walk-plan', path: '/walk-plan', title: 'Slot Stacking & Plan' },
+        walkerEnRoute: { name: 'walk-tracking', path: '/walk-tracking', title: 'Walker Match & OTP' },
+        liveWalk: { name: 'live-walk', path: '/live-walk', title: 'Live Society Walk' },
       },
     },
   },
@@ -98,13 +98,12 @@ export const NAVIGATION = {
     authenticated: { to: 'dashboard', action: 'reset' }, //  Log in / Create Account
     closeProfile: { to: 'dashboard', action: 'tab' }, //     Profile back arrow
     signOut: { to: 'login', action: 'reset' }, //            Profile "Log out"
-    bookWalk: { to: 'walkConfig', action: 'push' }, //       "Book a Dog Walker" / Log Walk / Rebook
-    closeBooking: { to: 'dashboard', action: 'back' }, //    Book a Walk back arrow
-    choosePickup: { to: 'pickupLocation', action: 'push' }, // "Select Pickup Location"
-    backToWalkSetup: { to: 'walkConfig', action: 'back' }, // Pickup back arrow
-    walkBooked: { to: 'dashboard', action: 'dismissTo' }, //  Scheduled walk matched → Done
-    trackWalker: { to: 'walkerEnRoute', action: 'stackOnRoot' }, // Instant match → Done / "Track walker"
-    startLiveWalk: { to: 'liveWalk', action: 'replace' }, //  "Verify OTP & Start Walk"
+    bookWalk: { to: 'societySetup', action: 'push' }, //     "Book a Dog Walker" / Log Walk / Rebook
+    closeBooking: { to: 'dashboard', action: 'back' }, //    Society profile back arrow
+    chooseWalkPlan: { to: 'walkPlan', action: 'push' }, //   "Choose Walk Plan & Slot"
+    backToSociety: { to: 'societySetup', action: 'back' }, // Walk plan back arrow
+    trackWalker: { to: 'walkerEnRoute', action: 'stackOnRoot' }, // Paid → "Confirm Slot & View Walker" / "Track walker"
+    startLiveWalk: { to: 'liveWalk', action: 'replace' }, //  "Verify OTP & Start GPS Walk"
     openLiveWalk: { to: 'liveWalk', action: 'stackOnRoot' }, // Dashboard "Live walk"
     exitTracking: { to: 'dashboard', action: 'dismissTo' }, // Tracking back / cancel / walk done
   },

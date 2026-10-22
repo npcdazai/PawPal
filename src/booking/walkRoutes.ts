@@ -1,22 +1,27 @@
 import { useEffect, useMemo, useState } from 'react';
 import { makeLine, offsetMeters, type GeoLine, type LngLat } from './geo';
-import { HOME_PICKUP_ROUTE } from './geoFallbacks';
-import { isHome, walkerStartFor } from './pickupPlaces';
 import { fetchWalkingRoute, useWalkingRoute } from './routing';
 
-/** The walker's street route from where they were matched to the pickup. */
-export function usePickupRoute(pickup: LngLat): GeoLine {
-  const [lng, lat] = pickup;
-  const waypoints = useMemo((): LngLat[] => [walkerStartFor([lng, lat]), [lng, lat]], [lng, lat]);
-  return useWalkingRoute(waypoints, isHome(waypoints[1]) ? HOME_PICKUP_ROUTE : waypoints);
+/** The walker's path inside the township, from the previous slot's tower to Barnaby's lobby. */
+export function usePickupRoute(from: LngLat, to: LngLat): GeoLine {
+  const [fromLng, fromLat] = from;
+  const [toLng, toLat] = to;
+  const waypoints = useMemo(
+    (): LngLat[] => [
+      [fromLng, fromLat],
+      [toLng, toLat],
+    ],
+    [fromLng, fromLat, toLng, toLat]
+  );
+  return useWalkingRoute(waypoints, waypoints);
 }
 
 // ─── The walk itself ─────────────────────────────────────────────────────────
 
 /**
- * A neighbourhood loop around wherever Barnaby was picked up — no fixed
- * route, so it works in any city. Offsets in metres (east, north); the
- * routing engine snaps them onto real streets and paths.
+ * The township loop from Barnaby's tower lobby: out past the clubhouse lawn,
+ * round the internal jogging track and back. Offsets in metres (east, north);
+ * the routing engine snaps them onto the complex's real paths.
  */
 const LOOP_SHAPE: readonly (readonly [east: number, north: number])[] = [
   [0, 0],
@@ -27,9 +32,12 @@ const LOOP_SHAPE: readonly (readonly [east: number, north: number])[] = [
   [240, 200],
   [0, 0],
 ];
-/** Tried in turn until the routed loop is a walkable length (street grids vary a lot). */
-const LOOP_SCALES = [1, 0.65, 0.45] as const;
-const MAX_LOOP_KM = 4.2;
+/**
+ * Tried in turn until the routed loop fits a 30-minute society walk
+ * (~1.4 km at a dog's sniffing pace); internal paths vary a lot by complex.
+ */
+const LOOP_SCALES = [0.42, 0.32, 0.24] as const;
+const MAX_LOOP_KM = 1.9;
 
 export const walkLoopWaypoints = (pickup: LngLat, scale: number = LOOP_SCALES[0]): LngLat[] =>
   LOOP_SHAPE.map(([east, north]) => offsetMeters(pickup, east * scale, north * scale));

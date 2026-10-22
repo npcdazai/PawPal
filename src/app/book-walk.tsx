@@ -1,3 +1,3 @@
-import { WalkConfigScreen } from '../screens/WalkConfigScreen';
+import { SocietyProfileScreen } from '../screens/SocietyProfileScreen';
 
-export default WalkConfigScreen;
+export default SocietyProfileScreen;
