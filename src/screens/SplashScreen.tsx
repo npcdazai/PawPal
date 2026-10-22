@@ -10,6 +10,7 @@ import { MascotDockSlot } from '../mascot/MascotDockSlot';
 import { useMascotActions, useMascotStatus } from '../mascot/MascotProvider';
 import { NATIVE_DRIVER } from '../theme/motion';
 import { useAppNavigation } from '../navigation/useAppNavigation';
+import { withVersion } from '../config/appInfo';
 
 /** The hero-circle slot is 220px; the orbs float just outside it. */
 const HERO_SIZE = 220;
@@ -25,7 +26,7 @@ export function SplashScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <Badge label="🐾 PawPal Care Engine v2.4" tone="white" style={styles.versionTag} />
+        <Badge label={`🐾 ${withVersion('PawPal Care Engine')}`} tone="white" style={styles.versionTag} />
 
         <View style={styles.heroGroup}>
           <View style={styles.hero}>

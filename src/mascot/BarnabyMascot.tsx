@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Animated, Easing, Image, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts } from '../theme/typography';
@@ -41,7 +42,7 @@ function SpriteFrames({ clip, fps, size }: { clip: SpriteClip; fps: number; size
         transform: [{ translateY: pose.translateY }, { rotate: `${pose.rotate}deg` }],
       }}
     >
-      <Image source={CORGI} style={{ width: size, height: size }} resizeMode="contain" />
+      <Image source={CORGI} style={{ width: size, height: size }} contentFit="contain" />
       <SpriteAccents clip={clip.name} frame={frame} />
     </View>
   );

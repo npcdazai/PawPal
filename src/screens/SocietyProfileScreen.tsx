@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,6 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { colors, radii, shadows } from '../theme/colors';
@@ -153,7 +153,7 @@ export function SocietyProfileScreen() {
           Society & Behavioral Profile
         </Text>
         <View style={styles.headerAvatar}>
-          <Image source={require('../../assets/corgi_mascot.png')} style={styles.headerAvatarImage} />
+          <Image source={require('../../assets/corgi_mascot.png')} style={styles.headerAvatarImage} contentFit="cover" />
         </View>
       </View>
 

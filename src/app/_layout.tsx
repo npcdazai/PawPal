@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -12,10 +12,17 @@ import {
 } from '@expo-google-fonts/plus-jakarta-sans';
 import { BookingsProvider } from '../booking/BookingsProvider';
 import { WalkArrivalBanner } from '../booking/WalkArrivalBanner';
+import { ErrorScreen } from '../components/ErrorScreen';
 import { MascotProvider } from '../mascot/MascotProvider';
+import { initMonitoring, Sentry } from '../monitoring/sentry';
 import { AppTabBar } from '../navigation/AppTabBar';
 import { STACK_SCREENS } from '../navigation/navigation';
 import { colors } from '../theme/colors';
+
+initMonitoring();
+
+/** Render errors anywhere below get the recovery screen (and go to Sentry when enabled). */
+export const ErrorBoundary = Sentry.wrapExpoRouterErrorBoundary(ErrorScreen);
 
 /**
  * The navigation stack (horizontal slides between screens), built from the
@@ -24,8 +31,8 @@ import { colors } from '../theme/colors';
  * sends his actions to the focused screen's slot. The common tab bar sits on
  * top and stays put while screens slide.
  */
-export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
+function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
     PlusJakartaSans_400Regular,
     PlusJakartaSans_500Medium,
     PlusJakartaSans_600SemiBold,
@@ -33,7 +40,12 @@ export default function RootLayout() {
     PlusJakartaSans_800ExtraBold,
   });
 
-  if (!fontsLoaded) {
+  // A font that fails to load shouldn't block the app: carry on with system fonts.
+  useEffect(() => {
+    if (fontError) Sentry.captureException(fontError);
+  }, [fontError]);
+
+  if (!fontsLoaded && !fontError) {
     return (
       <View style={styles.loading}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -68,6 +80,8 @@ export default function RootLayout() {
     </MascotProvider>
   );
 }
+
+export default Sentry.wrap(RootLayout);
 
 const styles = StyleSheet.create({
   root: {

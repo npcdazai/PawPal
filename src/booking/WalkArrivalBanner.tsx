@@ -103,23 +103,26 @@ function ArrivalCard({
         },
       ]}
     >
-      <Pressable
-        onPress={onOpen}
-        role="alert"
-        aria-label={`${title} ${detail}`}
-        style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-      >
-        <View style={styles.icon}>
-          <Text style={styles.iconGlyph}>🏠</Text>
-        </View>
-        <View style={styles.copy}>
-          <Text style={styles.title}>{title}</Text>
-          <Text style={styles.detail}>{detail}</Text>
-        </View>
-        <Pressable onPress={onDismiss} aria-label="Dismiss" hitSlop={10} style={styles.close}>
+      {/* Open and Dismiss are sibling buttons, so each is reachable on its own. */}
+      <View role="alert" style={styles.card}>
+        <Pressable
+          onPress={onOpen}
+          accessibilityRole="button"
+          aria-label={`${title} ${detail}`}
+          style={({ pressed }) => [styles.open, pressed && styles.pressed]}
+        >
+          <View style={styles.icon}>
+            <Text style={styles.iconGlyph}>🏠</Text>
+          </View>
+          <View style={styles.copy}>
+            <Text style={styles.title}>{title}</Text>
+            <Text style={styles.detail}>{detail}</Text>
+          </View>
+        </Pressable>
+        <Pressable onPress={onDismiss} accessibilityRole="button" aria-label="Dismiss" hitSlop={10} style={styles.close}>
           <Icon name="close" size={18} color={colors.slate} />
         </Pressable>
-      </Pressable>
+      </View>
     </Animated.View>
   );
 }
@@ -141,6 +144,12 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.successTint,
     ...shadows.float,
+  },
+  open: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   icon: {
     width: 44,

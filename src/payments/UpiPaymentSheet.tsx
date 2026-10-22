@@ -70,7 +70,7 @@ export function UpiPaymentSheet({ title, lines, total, description, metadata, on
   return (
     <View style={StyleSheet.absoluteFill}>
       <Animated.View style={[styles.backdrop, { opacity: enter }]}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={close} aria-label="Close payment" />
+        <Pressable style={StyleSheet.absoluteFill} onPress={close} accessibilityRole="button" aria-label="Close payment" />
       </Animated.View>
       <Animated.View
         role="dialog"

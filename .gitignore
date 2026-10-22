@@ -33,8 +33,16 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
-.env*.local
+# local env files (secrets such as SENTRY_AUTH_TOKEN live here or in EAS)
+.env
+.env.*
+!.env.example
+
+# test coverage
+coverage/
+
+# archives (design exports and the like)
+*.zip
 
 # typescript
 *.tsbuildinfo

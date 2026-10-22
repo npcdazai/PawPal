@@ -14,6 +14,7 @@ import { useMascotActions, useMascotStatus } from '../mascot/MascotProvider';
 import { useAppNavigation } from '../navigation/useAppNavigation';
 import { useBookings } from '../booking/BookingsProvider';
 import { WALKERS, type WalkerId } from '../data/careTeam';
+import { withVersion } from '../config/appInfo';
 
 const BASE_WALKS = 28;
 
@@ -426,7 +427,7 @@ export function ProfileScreen() {
           <Icon name="logout" size={20} color={colors.coralInk} />
           <Text style={styles.logoutText}>Log Out of PawPal</Text>
         </Pressable>
-        <Text style={styles.version}>PawPal App v3.4.2 · Made with 🐾 for Barnaby & Luna</Text>
+        <Text style={styles.version}>{withVersion('PawPal App')} · Made with 🐾 for Barnaby & Luna</Text>
       </ScrollView>
 
       <Toast message={message} bottomOffset={BOTTOM_NAV_HEIGHT + 28} />

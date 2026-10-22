@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { colors, radii, shadows } from '../theme/colors';
@@ -158,7 +159,7 @@ function WalkPlan({ profile }: { profile: SocietyProfile }) {
           Slot Stacking & Subscription
         </Text>
         <View style={styles.headerAvatar}>
-          <Image source={require('../../assets/corgi_mascot.png')} style={styles.headerAvatarImage} />
+          <Image source={require('../../assets/corgi_mascot.png')} style={styles.headerAvatarImage} contentFit="cover" />
         </View>
       </View>
 

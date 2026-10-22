@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Animated, Easing, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { colors, radii } from '../theme/colors';
+import { NATIVE_DRIVER } from '../theme/motion';
 
 interface ProgressBarProps {
   /** 0–1 */
@@ -18,29 +19,28 @@ export function ProgressBar({
   height = 8,
   style,
 }: ProgressBarProps) {
-  const [value] = useState(() => new Animated.Value(progress));
+  const clamped = Math.max(0, Math.min(1, progress));
+  const [value] = useState(() => new Animated.Value(clamped));
 
+  // The fill is full width, scaled from its left edge: a transform runs on the
+  // native driver and never triggers layout.
   useEffect(() => {
     Animated.timing(value, {
-      toValue: progress,
+      toValue: clamped,
       duration: 420,
       easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
+      useNativeDriver: NATIVE_DRIVER,
     }).start();
-  }, [progress, value]);
-
-  const width = useMemo(
-    () => value.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'], extrapolate: 'clamp' }),
-    [value]
-  );
+  }, [clamped, value]);
 
   return (
     <View
+      accessible
       accessibilityRole="progressbar"
-      accessibilityValue={{ min: 0, max: 100, now: Math.round(progress * 100) }}
+      accessibilityValue={{ min: 0, max: 100, now: Math.round(clamped * 100) }}
       style={[styles.track, { height, backgroundColor: trackColor }, style]}
     >
-      <Animated.View style={[styles.fill, { width, backgroundColor: color }]} />
+      <Animated.View style={[styles.fill, { backgroundColor: color, transform: [{ scaleX: value }] }]} />
     </View>
   );
 }
@@ -52,7 +52,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   fill: {
+    width: '100%',
     height: '100%',
     borderRadius: radii.full,
+    transformOrigin: 'left',
   },
 });

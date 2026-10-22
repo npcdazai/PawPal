@@ -39,7 +39,7 @@ export function ActionSheet({ title, subtitle, options, cancelLabel = 'Cancel', 
   return (
     <View style={StyleSheet.absoluteFill}>
       <Animated.View style={[styles.backdrop, { opacity: enter }]}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} aria-label="Close" />
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" aria-label="Close" />
       </Animated.View>
       <Animated.View
         role="dialog"

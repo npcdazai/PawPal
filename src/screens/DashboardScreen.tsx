@@ -1,5 +1,6 @@
-import React, { useCallback, useRef, useState, type ComponentRef } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { memo, useCallback, useRef, useState, type ComponentRef } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { colors, radii, shadows } from '../theme/colors';
@@ -24,6 +25,9 @@ const WALK_GOAL_KM = 4;
 const TODAY_WALK_KM = 3.2;
 const KCAL_PER_KM = 65.6;
 const DAILY_MEALS = 2;
+/** Recent Moments shows the newest few until "See all"; the log keeps at most MAX_MOMENTS. */
+const VISIBLE_MOMENTS = 5;
+const MAX_MOMENTS = 30;
 
 type QuickAction = 'walk' | 'feed' | 'meds' | 'bowl';
 
@@ -103,6 +107,7 @@ export function DashboardScreen() {
   const [mealsServed, setMealsServed] = useState(2);
   const [bonusSnacks, setBonusSnacks] = useState(0);
   const [moments, setMoments] = useState<Moment[]>(INITIAL_MOMENTS);
+  const [showAllMoments, setShowAllMoments] = useState(false);
   const momentSeq = useRef(0);
 
   const walkMoments: Moment[] = completedWalks.map((walk) => ({
@@ -115,13 +120,16 @@ export function DashboardScreen() {
     ink: colors.successInk,
   }));
 
+  const allMoments = [...walkMoments, ...moments].slice(0, MAX_MOMENTS);
+  const shownMoments = showAllMoments ? allMoments : allMoments.slice(0, VISIBLE_MOMENTS);
+
   const walkPercent = Math.min(100, Math.round((walkKm / WALK_GOAL_KM) * 100));
   const kcal = Math.round(walkKm * KCAL_PER_KM);
 
   const logMoment = (moment: Omit<Moment, 'id' | 'time'>) => {
     momentSeq.current += 1;
     const entry = { ...moment, id: `log-${momentSeq.current}`, time: formatClock(new Date()) };
-    setMoments((current) => [entry, ...current]);
+    setMoments((current) => [entry, ...current].slice(0, MAX_MOMENTS));
   };
 
   const runQuickAction = (action: QuickAction) => {
@@ -216,7 +224,7 @@ export function DashboardScreen() {
           <Pressable
             onPress={openProfile}
             accessibilityRole="button"
-            accessibilityLabel="Sarah's profile"
+            accessibilityLabel="Your profile"
             style={styles.avatar}
           >
             <Text style={styles.avatarText}>S</Text>
@@ -362,7 +370,7 @@ export function DashboardScreen() {
             <Image
               source={require('../../assets/corgi_dashboard.jpg')}
               style={styles.highlightThumb}
-              resizeMode="cover"
+              contentFit="cover"
               accessibilityIgnoresInvertColors
             />
             <View style={styles.highlightCopy}>
@@ -370,27 +378,32 @@ export function DashboardScreen() {
               <Text style={styles.highlightTitle}>Morning sprint at Elm Creek</Text>
               <Text style={styles.cardMeta}>2.1 km · Personal best pace!</Text>
             </View>
-            <Icon name="chevron-right" size={22} color={colors.placeholder} />
           </View>
 
           <View style={styles.momentList}>
-            {[...walkMoments, ...moments].map((moment) => (
-              <View key={moment.id} style={styles.momentRow}>
-                <View style={[styles.momentIcon, { backgroundColor: moment.tint }]}>
-                  <Icon name={moment.icon} size={20} color={moment.ink} />
-                </View>
-                <View style={styles.momentCopy}>
-                  <Text style={styles.momentTitle} numberOfLines={1}>
-                    {moment.title}
-                  </Text>
-                  <Text style={styles.cardMeta} numberOfLines={1}>
-                    {moment.detail}
-                  </Text>
-                </View>
-                <Text style={styles.momentTime}>{moment.time}</Text>
-              </View>
+            {shownMoments.map((moment) => (
+              <MomentRow
+                key={moment.id}
+                title={moment.title}
+                detail={moment.detail}
+                time={moment.time}
+                icon={moment.icon}
+                tint={moment.tint}
+                ink={moment.ink}
+              />
             ))}
           </View>
+          {allMoments.length > VISIBLE_MOMENTS ? (
+            <Pressable
+              onPress={() => setShowAllMoments((all) => !all)}
+              accessibilityRole="button"
+              aria-expanded={showAllMoments}
+              hitSlop={8}
+              style={({ pressed }) => [styles.seeAll, pressed && styles.pressed]}
+            >
+              <Text style={styles.seeAllText}>{showAllMoments ? 'Show less' : `See all ${allMoments.length}`}</Text>
+            </Pressable>
+          ) : null}
         </View>
       </ScrollView>
 
@@ -520,6 +533,26 @@ function WalkerBookingCard({ booking, onBook, onRebook, onTrack }: WalkerBooking
     </Pressable>
   );
 }
+
+/** One Recent Moments row; primitive props so unchanged rows skip re-rendering. */
+const MomentRow = memo(function MomentRow({ title, detail, time, icon, tint, ink }: Omit<Moment, 'id'>) {
+  return (
+    <View style={styles.momentRow}>
+      <View style={[styles.momentIcon, { backgroundColor: tint }]}>
+        <Icon name={icon} size={20} color={ink} />
+      </View>
+      <View style={styles.momentCopy}>
+        <Text style={styles.momentTitle} numberOfLines={1}>
+          {title}
+        </Text>
+        <Text style={styles.cardMeta} numberOfLines={1}>
+          {detail}
+        </Text>
+      </View>
+      <Text style={styles.momentTime}>{time}</Text>
+    </View>
+  );
+});
 
 function SectionHeader({ title, meta }: { title: string; meta: string }) {
   return (
@@ -864,6 +897,15 @@ const styles = StyleSheet.create({
   momentTime: {
     ...typography.bodySm,
     color: colors.placeholder,
+  },
+  seeAll: {
+    alignSelf: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+  },
+  seeAllText: {
+    ...typography.label,
+    color: colors.primary,
   },
   pressed: {
     opacity: 0.85,

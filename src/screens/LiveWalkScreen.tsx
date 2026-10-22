@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
@@ -337,7 +338,7 @@ export function LiveWalkScreen() {
               aria-label="Open the live check-in photo"
               style={({ pressed }) => [styles.proof, pressed && styles.pressedSoft]}
             >
-              <Image source={LIVE_PHOTO} style={styles.proofPhoto} resizeMode="cover" />
+              <Image source={LIVE_PHOTO} style={styles.proofPhoto} contentFit="cover" />
               <View style={styles.flex}>
                 <View style={styles.spaceBetween}>
                   <Text style={styles.proofLabel}>MANDATORY IN-APP CHECK-IN</Text>
@@ -410,9 +411,14 @@ export function LiveWalkScreen() {
       <Toast message={message} bottomOffset={100} />
 
       {photoOpen && photo ? (
-        <Pressable style={styles.photoBackdrop} onPress={() => setPhotoOpen(false)} aria-label="Close photo">
+        <Pressable
+          style={styles.photoBackdrop}
+          onPress={() => setPhotoOpen(false)}
+          accessibilityRole="button"
+          aria-label="Close photo"
+        >
           <View style={styles.photoCard}>
-            <Image source={LIVE_PHOTO} style={styles.photo} resizeMode="cover" />
+            <Image source={LIVE_PHOTO} style={styles.photo} contentFit="cover" />
             <Text style={styles.photoCaption}>📸 Barnaby in his chest harness • {walkClock(booking, photo.at)}</Text>
             <Text style={styles.meta}>In-App Live Camera • GPS {pointAlong(loop, photo.at).map((n) => n.toFixed(4)).reverse().join(', ')}</Text>
             <Text style={styles.meta}>Tap anywhere to close</Text>

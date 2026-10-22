@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet } from 'react-native';
+import { Animated, Easing, Pressable, StyleSheet, View } from 'react-native';
 import { colors, radii, shadows } from '../theme/colors';
+import { NATIVE_DRIVER } from '../theme/motion';
 
 const TRACK_WIDTH = 50;
 const TRACK_HEIGHT = 30;
@@ -17,23 +18,18 @@ interface ToggleProps {
 export function Toggle({ value, onValueChange, accessibilityLabel }: ToggleProps) {
   const [progress] = useState(() => new Animated.Value(value ? 1 : 0));
 
+  // Opacity and transform only, so the native driver runs it off the JS thread.
   useEffect(() => {
     Animated.timing(progress, {
       toValue: value ? 1 : 0,
       duration: 180,
       easing: Easing.out(Easing.quad),
-      useNativeDriver: false,
+      useNativeDriver: NATIVE_DRIVER,
     }).start();
   }, [progress, value]);
 
-  const { trackColor, translateX } = useMemo(
-    () => ({
-      trackColor: progress.interpolate({
-        inputRange: [0, 1],
-        outputRange: [colors.track, colors.primary],
-      }),
-      translateX: progress.interpolate({ inputRange: [0, 1], outputRange: [0, TRAVEL] }),
-    }),
+  const translateX = useMemo(
+    () => progress.interpolate({ inputRange: [0, 1], outputRange: [0, TRAVEL] }),
     [progress]
   );
 
@@ -45,9 +41,11 @@ export function Toggle({ value, onValueChange, accessibilityLabel }: ToggleProps
       aria-label={accessibilityLabel}
       hitSlop={8}
     >
-      <Animated.View style={[styles.track, { backgroundColor: trackColor }]}>
+      <View style={styles.track}>
+        {/* The "on" colour fades in over the grey track. */}
+        <Animated.View style={[styles.trackOn, { opacity: progress }]} />
         <Animated.View style={[styles.thumb, { transform: [{ translateX }] }]} />
-      </Animated.View>
+      </View>
     </Pressable>
   );
 }
@@ -59,6 +57,12 @@ const styles = StyleSheet.create({
     borderRadius: radii.full,
     padding: 3,
     justifyContent: 'center',
+    backgroundColor: colors.track,
+  },
+  trackOn: {
+    ...StyleSheet.absoluteFill,
+    borderRadius: radii.full,
+    backgroundColor: colors.primary,
   },
   thumb: {
     width: THUMB,

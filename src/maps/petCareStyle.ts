@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { LayerSpecification, StyleSpecification } from '@maplibre/maplibre-react-native';
+import { fetchWithTimeout } from '../net/fetchWithTimeout';
 
 /** OpenFreeMap vector tiles: free, no API key. */
 export const OPENFREEMAP_POSITRON = 'https://tiles.openfreemap.org/styles/positron';
@@ -89,7 +90,7 @@ let pending: Promise<StyleSpecification | null> | null = null;
 /** Fetches and restyles Positron once per session (call early to warm it up). */
 export function loadPetCareStyle(): Promise<StyleSpecification | null> {
   if (cached) return Promise.resolve(cached);
-  pending ??= fetch(OPENFREEMAP_POSITRON)
+  pending ??= fetchWithTimeout(OPENFREEMAP_POSITRON)
     .then((response) => (response.ok ? (response.json() as Promise<StyleSpecification>) : null))
     .then((style) => {
       cached = style ? petCareStyle(style) : null;
@@ -104,7 +105,8 @@ export function loadPetCareStyle(): Promise<StyleSpecification | null> {
 
 /**
  * The restyled map style; null while it loads. If OpenFreeMap can't be
- * reached for the JSON, falls back to its URL so the map still renders.
+ * reached for the JSON (or doesn't answer in time), falls back to its URL so
+ * the map still renders.
  */
 export function usePetCareStyle(): StyleSpecification | string | null {
   const [style, setStyle] = useState<StyleSpecification | string | null>(cached);

@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { memo, useEffect, useRef, useState } from 'react';
+import { Animated, Easing, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
@@ -23,6 +23,20 @@ interface WalkerChatSheetProps {
 }
 
 const AUTO_REPLY_MS = 1100;
+
+/** One chat bubble; primitive props so earlier messages don't re-render. */
+const ChatBubble = memo(function ChatBubble({ from, text }: Omit<ChatMessage, 'id'>) {
+  const you = from === 'you';
+  return (
+    <View style={[styles.bubble, you ? styles.bubbleYou : styles.bubbleWalker]}>
+      <Text style={[styles.bubbleText, you && styles.bubbleTextYou]}>{text}</Text>
+    </View>
+  );
+});
+
+const messageKey = (message: ChatMessage) => String(message.id);
+const renderMessage = ({ item }: { item: ChatMessage }) => <ChatBubble from={item.from} text={item.text} />;
+const BubbleGap = () => <View style={styles.bubbleGap} />;
 
 /** Quick chat preview with the walker: tap a reply, the walker answers. */
 export function WalkerChatSheet({ walker, latest, quickReplies, onClose }: WalkerChatSheetProps) {
@@ -64,7 +78,7 @@ export function WalkerChatSheet({ walker, latest, quickReplies, onClose }: Walke
   return (
     <View style={StyleSheet.absoluteFill}>
       <Animated.View style={[styles.backdrop, { opacity: enter }]}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} aria-label="Close chat" />
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" aria-label="Close chat" />
       </Animated.View>
       <Animated.View
         role="dialog"
@@ -91,18 +105,14 @@ export function WalkerChatSheet({ walker, latest, quickReplies, onClose }: Walke
           </Pressable>
         </View>
 
-        <ScrollView style={styles.thread} contentContainerStyle={styles.threadContent}>
-          {messages.map((message) => (
-            <View
-              key={message.id}
-              style={[styles.bubble, message.from === 'you' ? styles.bubbleYou : styles.bubbleWalker]}
-            >
-              <Text style={[styles.bubbleText, message.from === 'you' && styles.bubbleTextYou]}>
-                {message.text}
-              </Text>
-            </View>
-          ))}
-        </ScrollView>
+        <FlatList
+          data={messages}
+          keyExtractor={messageKey}
+          renderItem={renderMessage}
+          ItemSeparatorComponent={BubbleGap}
+          style={styles.thread}
+          contentContainerStyle={styles.threadContent}
+        />
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.replies}>
           {quickReplies.map((reply) => (
@@ -168,8 +178,10 @@ const styles = StyleSheet.create({
     maxHeight: 220,
   },
   threadContent: {
-    gap: 8,
     paddingVertical: 4,
+  },
+  bubbleGap: {
+    height: 8,
   },
   bubble: {
     maxWidth: '82%',
