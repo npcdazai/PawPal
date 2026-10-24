@@ -11,8 +11,8 @@ describe('redirectSystemPath', () => {
     'exp://192.168.1.5:8081/--/payment-return?order=PAWPAL-1',
   ])('keeps the current screen for the payment return link %s', (path) => {
     expect(redirect(path)).toBeNull();
-    // Cold start from the payment return: open the home screen.
-    expect(redirect(path, true)).toBe('/');
+    // Cold start from the payment return: open the home screen (the dashboard, not the signed-out splash).
+    expect(redirect(path, true)).toBe('/dashboard');
   });
 
   test.each([

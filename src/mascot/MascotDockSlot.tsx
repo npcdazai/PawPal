@@ -12,6 +12,7 @@ import {
 import { useIsFocused } from 'expo-router';
 import { colors } from '../theme/colors';
 import { NATIVE_DRIVER } from '../theme/motion';
+import { useResponsive, type Responsive } from '../theme/responsive';
 import { CorgiSprite, GroundShadow, WoofPill } from './BarnabyMascot';
 import { PHYSICS, RIG_POSES, TRACK, type RigPoseName, type SpriteClipName } from './mascotModel';
 import { useMascotSlotHub, type SlotMotion } from './MascotProvider';
@@ -80,6 +81,26 @@ const popupSpec = (diameter: number): VariantSpec => ({
   clip: false,
 });
 
+/**
+ * The slot on this window. The big stages (splash circle, auth header, dialog
+ * popups) shrink with the window's height on short phones, never below 85%;
+ * the small docks and pins keep their designed size.
+ */
+const specFor = (variant: MascotSlotVariant, diameter: number, r: Responsive): VariantSpec => {
+  switch (variant) {
+    case 'popup':
+      return popupSpec(r.scaleHeight(diameter));
+    case 'hero-circle': {
+      const size = r.scaleHeight(VARIANTS[variant].height);
+      return { ...VARIANTS[variant], width: size, height: size };
+    }
+    case 'auth-header':
+      return { ...VARIANTS[variant], height: r.scaleHeight(VARIANTS[variant].height) };
+    default:
+      return VARIANTS[variant];
+  }
+};
+
 const rigPoseFor = (
   hub: ReturnType<typeof useMascotSlotHub>,
   isCurrent: boolean
@@ -107,7 +128,7 @@ const clipFor = (
 
 interface MascotDockSlotProps {
   variant: MascotSlotVariant;
-  /** 'popup' only: the circle he stands in. */
+  /** 'popup' only: the circle he stands in, at the design size (it shrinks on short windows). */
   diameter?: number;
   /**
    * Lets one screen hand Barnaby between slots (map pin → dialog): an inactive
@@ -126,7 +147,8 @@ interface MascotDockSlotProps {
  * after a transition: he moves with the screen like any other view.
  */
 export function MascotDockSlot({ variant, diameter = 120, active = true, style }: MascotDockSlotProps) {
-  const spec = variant === 'popup' ? popupSpec(diameter) : VARIANTS[variant];
+  const responsive = useResponsive();
+  const spec = specFor(variant, diameter, responsive);
   const border = spec.frame.borderWidth ?? 0;
   const corgiSize = Math.round((Math.min(spec.width ?? spec.height, spec.height) - 2 * border) * spec.fill);
 

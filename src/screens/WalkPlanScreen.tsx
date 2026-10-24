@@ -5,6 +5,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useLocalSearchParams } from 'expo-router';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
+import { useResponsive } from '../theme/responsive';
 import { Icon } from '../components/Icon';
 import { Avatar } from '../components/Avatar';
 import { PrimaryButton } from '../components/Button';
@@ -70,6 +71,7 @@ export function WalkPlanScreen() {
 
 function WalkPlan({ profile }: { profile: SocietyProfile }) {
   const insets = useSafeAreaInsets();
+  const { compact } = useResponsive();
   const { go } = useAppNavigation();
   const { glance, barkWith } = useMascotActions();
   const { addBooking } = useBookings();
@@ -145,7 +147,7 @@ function WalkPlan({ profile }: { profile: SocietyProfile }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, compact && styles.topBarCompact]}>
         <Pressable
           onPress={() => go('backToSociety')}
           accessibilityRole="button"
@@ -155,7 +157,8 @@ function WalkPlan({ profile }: { profile: SocietyProfile }) {
         >
           <Icon name="arrow-back" size={22} color={colors.ink} />
         </Pressable>
-        <Text style={styles.topTitle} numberOfLines={1}>
+        {/* Narrow phones wrap the title onto a second line rather than cut it off. */}
+        <Text style={[styles.topTitle, compact && styles.topTitleCompact]} numberOfLines={compact ? 2 : 1}>
           Slot Stacking & Subscription
         </Text>
         <View style={styles.headerAvatar}>
@@ -298,7 +301,7 @@ function WalkPlan({ profile }: { profile: SocietyProfile }) {
       <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
         <View style={styles.summaryRow}>
           <View style={styles.summaryDot} />
-          <Text style={styles.summaryText} numberOfLines={1}>
+          <Text style={styles.summaryText} numberOfLines={2}>
             Selected: {summary}
           </Text>
         </View>
@@ -462,6 +465,8 @@ function SlotPicker({
   onBatch: (batch: Batch) => void;
   onSlot: (start: number) => void;
 }) {
+  // Narrow phones: batch names sit above their times, and a slot's tag drops below its time when both don't fit.
+  const { compact } = useResponsive();
   return (
     <View style={styles.slots}>
       <View style={styles.inlineRow}>
@@ -488,8 +493,13 @@ function SlotPicker({
               style={[styles.segmentItem, active && styles.segmentActive]}
             >
               <Icon name={BATCHES[option].icon} size={16} color={active ? colors.onPrimary : colors.slate} />
-              <Text style={[styles.segmentText, active && styles.segmentTextActive]} numberOfLines={1}>
-                {option === 'morning' ? 'Morning' : 'Evening'} · {BATCHES[option].short}
+              <Text
+                style={[styles.segmentText, compact && styles.segmentTextCompact, active && styles.segmentTextActive]}
+                numberOfLines={compact ? 2 : 1}
+              >
+                {option === 'morning' ? 'Morning' : 'Evening'}
+                {compact ? '\n' : ' · '}
+                {BATCHES[option].short}
               </Text>
             </Pressable>
           );
@@ -501,10 +511,14 @@ function SlotPicker({
           const time = slotRange(startMin);
           if (state.kind === 'booked') {
             return (
-              <View key={startMin} style={[styles.slot, styles.slotBooked]} aria-label={`${time} booked`}>
+              <View
+                key={startMin}
+                style={[styles.slot, compact && styles.slotCompact, styles.slotBooked]}
+                aria-label={`${time} booked`}
+              >
                 <Icon name="lock" size={17} color={colors.placeholder} />
-                <Text style={[styles.slotTime, styles.slotTimeBooked]}>{time}</Text>
-                <View style={styles.bookedTag}>
+                <Text style={[styles.slotTime, compact && styles.slotTimeCompact, styles.slotTimeBooked]}>{time}</Text>
+                <View style={[styles.bookedTag, compact && styles.slotTagCompact]}>
                   <Text style={styles.bookedTagText} numberOfLines={1}>
                     Booked — Tower {state.walk.tower}, {state.walk.breed}
                   </Text>
@@ -520,11 +534,23 @@ function SlotPicker({
               role="radio"
               aria-checked={selected}
               aria-label={`${time} available`}
-              style={({ pressed }) => [styles.slot, selected && styles.slotSelected, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.slot,
+                compact && styles.slotCompact,
+                selected && styles.slotSelected,
+                pressed && styles.pressed,
+              ]}
             >
               <Icon name="schedule" size={17} color={selected ? colors.onPrimary : colors.slate} />
-              <Text style={[styles.slotTime, selected && styles.onPrimary]}>{time}</Text>
-              <View style={[styles.openTag, selected && styles.openTagSelected, state.after && !selected && styles.stackTag]}>
+              <Text style={[styles.slotTime, compact && styles.slotTimeCompact, selected && styles.onPrimary]}>{time}</Text>
+              <View
+                style={[
+                  styles.openTag,
+                  compact && styles.slotTagCompact,
+                  selected && styles.openTagSelected,
+                  state.after && !selected && styles.stackTag,
+                ]}
+              >
                 <Text
                   style={[styles.openTagText, selected && styles.primaryText, state.after && !selected && styles.stackTagText]}
                   numberOfLines={1}
@@ -599,9 +625,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
+  topBarCompact: {
+    gap: 8,
+  },
   topTitle: {
     ...typography.headline,
     flexShrink: 1,
+  },
+  topTitleCompact: {
+    textAlign: 'center',
   },
   iconButton: {
     width: 42,
@@ -868,6 +900,10 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     color: colors.slate,
   },
+  segmentTextCompact: {
+    flexShrink: 1,
+    textAlign: 'center',
+  },
   segmentTextActive: {
     color: colors.onPrimary,
   },
@@ -879,10 +915,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 14,
-    height: 52,
+    minHeight: 52,
     borderRadius: radii.md,
     backgroundColor: colors.card,
     ...shadows.soft,
+  },
+  slotCompact: {
+    flexWrap: 'wrap',
+    rowGap: 6,
+    paddingVertical: 10,
+  },
+  // The time keeps one line; the tag sits at the row's end, or wraps below when there is no room.
+  slotTimeCompact: {
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: 'auto',
+  },
+  slotTagCompact: {
+    maxWidth: '100%',
+    marginLeft: 'auto',
   },
   slotBooked: {
     backgroundColor: '#F2F3F6',

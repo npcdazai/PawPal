@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
+import { useResponsive } from '../theme/responsive';
 import { Icon } from '../components/Icon';
 import { Avatar } from '../components/Avatar';
 import { PrimaryButton } from '../components/Button';
@@ -28,13 +29,15 @@ const BACKUP_ETA_MIN = 3;
 const MONO = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' });
 /** Room for the batch pill above, the lobby pill below and the sheet's rounded top. */
 const MAP_PADDING = { top: 120, right: 70, bottom: 110, left: 70 };
+/** Narrow phones wrap the batch pill onto a second line: keep Barnaby's label clear of it. */
+const MAP_PADDING_COMPACT = { ...MAP_PADDING, top: MAP_PADDING.top + 24 };
 const ROUTE_DASH = [2, 2] as const;
 const MINT = '#E8F8F0';
 
 /** Screen 7 — WALKER_EN_ROUTE_OTP: the assigned society walker, auto-backup and the insurance OTP. */
 export function WalkerEnRouteScreen() {
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, compact } = useResponsive();
   const { go } = useAppNavigation();
   const { barkWith, glance } = useMascotActions();
   const { startWalk, cancelWalk, reassignToBackup, societyProfile } = useBookings();
@@ -78,6 +81,9 @@ export function WalkerEnRouteScreen() {
   const firstName = walker.name.split(' ')[0];
   const status = enRouteStatus(booking, now, route.lengthKm);
   const mapHeight = Math.round(windowHeight * 0.44);
+  // Narrow phones keep the map pills inside the margins and wrap their text instead.
+  const pillLines = compact ? 2 : 1;
+  const pillStyle = compact ? styles.pillCompact : undefined;
   const express = booking.tier === 'express';
   const handsOn = societyProfile?.temperament === 'pulls' && walker.heavyDuty;
 
@@ -125,7 +131,7 @@ export function WalkerEnRouteScreen() {
       <View style={[styles.mapArea, { height: mapHeight }]}>
         <PawMap
           initialCenter={pickup}
-          initialBounds={{ bounds: boundsOf([from, pickup]), padding: MAP_PADDING }}
+          initialBounds={{ bounds: boundsOf([from, pickup]), padding: compact ? MAP_PADDING_COMPACT : MAP_PADDING }}
           style={StyleSheet.absoluteFill}
         >
           {/* Barnaby waits at his lobby with the leash (IDLE_WAG; tap him to woof). */}
@@ -143,9 +149,9 @@ export function WalkerEnRouteScreen() {
         </PawMap>
 
         <View style={styles.topPillRow} pointerEvents="none">
-          <MapPill>
+          <MapPill style={pillStyle}>
             <PulsingDot />
-            <Text style={styles.pillText} numberOfLines={1}>
+            <Text style={styles.pillText} numberOfLines={pillLines}>
               {booking.reassigned
                 ? `Backup ${walker.shortName} assigned`
                 : booking.walkerFromTower
@@ -158,9 +164,9 @@ export function WalkerEnRouteScreen() {
           </MapPill>
         </View>
         <View style={styles.bottomPillRow} pointerEvents="none">
-          <MapPill>
+          <MapPill style={pillStyle}>
             <Icon name="place" size={17} color={colors.coral} />
-            <Text style={styles.pillText} numberOfLines={1}>
+            <Text style={styles.pillText} numberOfLines={pillLines}>
               {booking.tower} Main Lobby • <Text style={styles.pillStrong}>{arrivalText}</Text>
             </Text>
           </MapPill>
@@ -283,9 +289,9 @@ export function WalkerEnRouteScreen() {
             onPress={verifyAndStart}
           />
           <View style={styles.footerLinks}>
-            <Pressable onPress={maskedCall} accessibilityRole="button" hitSlop={8} style={styles.inlineRow}>
+            <Pressable onPress={maskedCall} accessibilityRole="button" hitSlop={8} style={[styles.inlineRow, styles.shrink]}>
               <Icon name="support-agent" size={16} color={colors.slate} />
-              <Text style={styles.footerText}>
+              <Text style={[styles.footerText, styles.shrink]}>
                 Call {firstName} (Walker) • Gate Pass #{walker.gatePass ?? '—'}
               </Text>
             </Pressable>
@@ -387,6 +393,9 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
+  shrink: {
+    flexShrink: 1,
+  },
   inlineRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -414,6 +423,9 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     alignItems: 'center',
+  },
+  pillCompact: {
+    maxWidth: '100%',
   },
   pillText: {
     ...typography.label,
@@ -630,6 +642,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 12,
   },
   footerText: {
     fontFamily: fonts.semibold,

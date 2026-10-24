@@ -18,7 +18,7 @@ interface PrimaryButtonProps {
   style?: StyleProp<ViewStyle>;
 }
 
-/** Full-width Primary Blue pill CTA (56px). */
+/** Full-width Primary Blue pill CTA (56px; taller only if a large font size wraps the label). */
 export function PrimaryButton({
   label,
   onPress,
@@ -81,7 +81,9 @@ export function SecondaryButton({ label, onPress, tone = 'blue', style }: Second
 
 const styles = StyleSheet.create({
   primary: {
-    height: 56,
+    minHeight: 56,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
     borderRadius: radii.full,
     backgroundColor: colors.primary,
     flexDirection: 'row',
@@ -96,6 +98,8 @@ const styles = StyleSheet.create({
   },
   primaryLabel: {
     ...typography.button,
+    flexShrink: 1,
+    textAlign: 'center',
   },
   disabled: {
     opacity: 0.5,

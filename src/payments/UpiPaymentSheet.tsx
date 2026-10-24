@@ -1,5 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Animated,
+  Easing,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PrimaryButton } from '../components/Button';
 import { Icon } from '../components/Icon';
@@ -7,6 +17,7 @@ import { formatMoney } from '../booking/walkPlans';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
 import { NATIVE_DRIVER } from '../theme/motion';
+import { useResponsive } from '../theme/responsive';
 import { UTR_LENGTH, cleanUtr, isValidUtr } from './upiIntent';
 import { useUpiPayment, type PaymentMode, type UpiPaymentState, type UpiReceipt } from './useUpiPayment';
 import type { UpiPayee } from './youpiConfig';
@@ -14,6 +25,8 @@ import type { UpiPayee } from './youpiConfig';
 /** How long the "Paid" confirmation shows before the booking carries on. */
 const PAID_HOLD_MS = 1400;
 const UPI_APPS = ['GPay', 'PhonePe', 'Paytm', 'BHIM'] as const;
+/** The sheet never rises closer than this to the status bar; a taller body scrolls under the header. */
+const SHEET_TOP_GAP = 24;
 
 export interface PaymentLine {
   label: string;
@@ -35,6 +48,7 @@ interface UpiPaymentSheetProps {
 /** Bottom sheet that takes one UPI payment: straight from the customer's UPI app, or via a YouPI gateway. */
 export function UpiPaymentSheet({ title, lines, total, description, metadata, onPaid, onClose }: UpiPaymentSheetProps) {
   const insets = useSafeAreaInsets();
+  const { height } = useResponsive();
   const { mode, payee, state, pay, confirmPaid, reopen, check, cancel } = useUpiPayment();
   const [enter] = useState(() => new Animated.Value(0));
   const paidRef = useRef(onPaid);
@@ -78,7 +92,9 @@ export function UpiPaymentSheet({ title, lines, total, description, metadata, on
         style={[
           styles.sheet,
           {
-            paddingBottom: insets.bottom + 18,
+            maxHeight: height - insets.top - SHEET_TOP_GAP,
+            // The scroll view carries the last 18 of bottom padding, so the button's shadow isn't clipped.
+            paddingBottom: insets.bottom,
             transform: [{ translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [420, 0] }) }],
           },
         ]}
@@ -101,30 +117,38 @@ export function UpiPaymentSheet({ title, lines, total, description, metadata, on
           ) : null}
         </View>
 
-        <View style={styles.bill}>
-          {lines.map((line) => (
-            <View key={line.label} style={styles.billRow}>
-              <Text style={styles.billLabel}>{line.label}</Text>
-              <Text style={styles.billAmount}>{formatMoney(line.amount)}</Text>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          bounces={false}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.bill}>
+            {lines.map((line) => (
+              <View key={line.label} style={styles.billRow}>
+                <Text style={styles.billLabel}>{line.label}</Text>
+                <Text style={styles.billAmount}>{formatMoney(line.amount)}</Text>
+              </View>
+            ))}
+            <View style={[styles.billRow, styles.billTotal]}>
+              <Text style={styles.totalLabel}>To pay</Text>
+              <Text style={styles.totalAmount}>{formatMoney(total)}</Text>
             </View>
-          ))}
-          <View style={[styles.billRow, styles.billTotal]}>
-            <Text style={styles.totalLabel}>To pay</Text>
-            <Text style={styles.totalAmount}>{formatMoney(total)}</Text>
           </View>
-        </View>
 
-        <SheetBody
-          mode={mode}
-          payee={payee}
-          state={state}
-          total={total}
-          onPay={startPayment}
-          onReopen={reopen}
-          onCheck={() => void check()}
-          onConfirm={confirmPaid}
-          onCancel={close}
-        />
+          <SheetBody
+            mode={mode}
+            payee={payee}
+            state={state}
+            total={total}
+            onPay={startPayment}
+            onReopen={reopen}
+            onCheck={() => void check()}
+            onConfirm={confirmPaid}
+            onCancel={close}
+          />
+        </ScrollView>
       </Animated.View>
     </View>
   );
@@ -451,6 +475,17 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1,
+  },
+  // Full sheet width, with the sheet's side padding inside it, so shadows aren't clipped at the content edge.
+  scroll: {
+    flexGrow: 0,
+    flexShrink: 1,
+    marginHorizontal: -20,
+  },
+  scrollContent: {
+    gap: 14,
+    paddingHorizontal: 20,
+    paddingBottom: 18,
   },
   upiBadge: {
     width: 46,

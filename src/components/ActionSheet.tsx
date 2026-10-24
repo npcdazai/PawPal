@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
 import { NATIVE_DRIVER } from '../theme/motion';
+import { useResponsive } from '../theme/responsive';
 import { Icon } from './Icon';
+
+/** The sheet never rises closer than this to the status bar; longer option lists scroll. */
+const SHEET_TOP_GAP = 24;
 
 export interface ActionSheetOption {
   icon: string;
@@ -25,6 +29,7 @@ interface ActionSheetProps {
 /** Bottom sheet of actions over a dimmed backdrop (SOS, confirmations). */
 export function ActionSheet({ title, subtitle, options, cancelLabel = 'Cancel', onClose }: ActionSheetProps) {
   const insets = useSafeAreaInsets();
+  const { height } = useResponsive();
   const [enter] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
@@ -47,6 +52,7 @@ export function ActionSheet({ title, subtitle, options, cancelLabel = 'Cancel', 
         style={[
           styles.sheet,
           {
+            maxHeight: height - insets.top - SHEET_TOP_GAP,
             paddingBottom: insets.bottom + 16,
             transform: [{ translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [320, 0] }) }],
           },
@@ -55,7 +61,7 @@ export function ActionSheet({ title, subtitle, options, cancelLabel = 'Cancel', 
         <View style={styles.handle} />
         <Text style={styles.title}>{title}</Text>
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
-        <View style={styles.options}>
+        <ScrollView style={styles.options} bounces={false} showsVerticalScrollIndicator={false}>
           {options.map((option) => {
             const coral = option.tone === 'coral';
             return (
@@ -76,7 +82,7 @@ export function ActionSheet({ title, subtitle, options, cancelLabel = 'Cancel', 
               </Pressable>
             );
           })}
-        </View>
+        </ScrollView>
         <Pressable
           onPress={onClose}
           accessibilityRole="button"
@@ -122,6 +128,8 @@ const styles = StyleSheet.create({
     ...typography.bodySm,
   },
   options: {
+    flexGrow: 0,
+    flexShrink: 1,
     marginTop: 8,
   },
   option: {

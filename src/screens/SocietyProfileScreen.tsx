@@ -13,6 +13,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useLocalSearchParams } from 'expo-router';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
+import { useResponsive } from '../theme/responsive';
 import { Icon } from '../components/Icon';
 import { Badge } from '../components/Badge';
 import { PrimaryButton } from '../components/Button';
@@ -41,10 +42,16 @@ import { loadPetCareStyle } from '../maps/petCareStyle';
 const FOOTER_HEIGHT = 128;
 /** A partner township within this distance of the GPS fix counts as "you live here". */
 const DETECT_RADIUS_KM = 3;
+/** The white portrait ring around Barnaby's 128 popup, at the design size. */
+const PORTRAIT_SIZE = 140;
+const PORTRAIT_DIAMETER = 128;
 
 /** Screen 5 — SOCIETY_TRUST_SETUP: lock the gated township and Barnaby's handling profile. */
 export function SocietyProfileScreen() {
   const insets = useSafeAreaInsets();
+  const r = useResponsive();
+  // Shrinks with the popup inside it on short phones.
+  const portrait = r.scaleHeight(PORTRAIT_SIZE);
   const { go } = useAppNavigation();
   const { glance, barkWith, focusField, blurField } = useMascotActions();
   const { societyProfile, setSocietyProfile } = useBookings();
@@ -139,7 +146,7 @@ export function SocietyProfileScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, r.compact && styles.topBarCompact]}>
         <Pressable
           onPress={() => go('closeBooking')}
           accessibilityRole="button"
@@ -149,7 +156,8 @@ export function SocietyProfileScreen() {
         >
           <Icon name="arrow-back" size={22} color={colors.ink} />
         </Pressable>
-        <Text style={styles.topTitle} numberOfLines={1}>
+        {/* Narrow phones wrap the title onto a second line rather than cut it off. */}
+        <Text style={[styles.topTitle, r.compact && styles.topTitleCompact]} numberOfLines={r.compact ? 2 : 1}>
           Society & Behavioral Profile
         </Text>
         <View style={styles.headerAvatar}>
@@ -164,12 +172,12 @@ export function SocietyProfileScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Hero: Barnaby verifying the profile */}
-        <View style={styles.hero}>
+        <View style={[styles.hero, r.short && styles.heroShort]}>
           <View style={styles.heroPill}>
             <Text style={styles.heroPillText}>🏘️ HYPER-LOCAL SOCIETY MATCHING</Text>
           </View>
-          <View style={styles.portrait}>
-            <MascotDockSlot variant="popup" diameter={128} />
+          <View style={[styles.portrait, { width: portrait, height: portrait, borderRadius: portrait / 2 }]}>
+            <MascotDockSlot variant="popup" diameter={PORTRAIT_DIAMETER} />
           </View>
           <View style={styles.verifiedPill}>
             <Text style={styles.verifiedText}>🐾 Barnaby {complete ? 'Verified' : 'Profile'}</Text>
@@ -434,9 +442,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
+  topBarCompact: {
+    gap: 8,
+  },
   topTitle: {
     ...typography.headline,
     flexShrink: 1,
+  },
+  topTitleCompact: {
+    textAlign: 'center',
   },
   iconButton: {
     width: 42,
@@ -476,6 +490,10 @@ const styles = StyleSheet.create({
     borderRadius: radii.xl,
     backgroundColor: colors.stage,
   },
+  heroShort: {
+    paddingTop: 12,
+    paddingBottom: 16,
+  },
   heroPill: {
     paddingHorizontal: 12,
     paddingVertical: 5,
@@ -490,9 +508,6 @@ const styles = StyleSheet.create({
     color: colors.ink,
   },
   portrait: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.card,

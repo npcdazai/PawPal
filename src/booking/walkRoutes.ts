@@ -20,8 +20,8 @@ export function usePickupRoute(from: LngLat, to: LngLat): GeoLine {
 
 /**
  * The township loop from Barnaby's tower lobby: out past the clubhouse lawn,
- * round the internal jogging track and back. Offsets in metres (east, north);
- * the routing engine snaps them onto the complex's real paths.
+ * round the internal jogging track and back. Offsets in metres (east, north).
+ * The API routes two points only, so the loop keeps this local shape.
  */
 const LOOP_SHAPE: readonly (readonly [east: number, north: number])[] = [
   [0, 0],

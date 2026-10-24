@@ -1,17 +1,20 @@
 import React, { useState, type ReactNode } from 'react';
 import { LayoutAnimation, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useMutation } from '@tanstack/react-query';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
+import { useResponsive } from '../theme/responsive';
 import { Icon } from '../components/Icon';
 import { Badge, type BadgeTone } from '../components/Badge';
 import { Avatar } from '../components/Avatar';
 import { Toggle } from '../components/Toggle';
 import { Toast, useToast } from '../components/Toast';
-import { BOTTOM_NAV_HEIGHT } from '../components/BottomNavigation';
+import { BOTTOM_NAV_HEIGHT, bottomNavClearance } from '../components/BottomNavigation';
 import { MascotDockSlot } from '../mascot/MascotDockSlot';
 import { useMascotActions, useMascotStatus } from '../mascot/MascotProvider';
 import { useAppNavigation } from '../navigation/useAppNavigation';
+import { useAuth } from '../auth/AuthProvider';
 import { useBookings } from '../booking/BookingsProvider';
 import { WALKERS, type WalkerId } from '../data/careTeam';
 import { withVersion } from '../config/appInfo';
@@ -36,11 +39,16 @@ const shortDate = (offsetDays: number) => {
 };
 
 export function ProfileScreen() {
+  const insets = useSafeAreaInsets();
+  const { compact } = useResponsive();
   const { go, goToTab } = useAppNavigation();
   const { bark, setHapticsEnabled } = useMascotActions();
   const { delight, hapticsEnabled } = useMascotStatus();
   const { bookings } = useBookings();
   const { message, show } = useToast();
+  const { signOut: endSession } = useAuth();
+  // Unregisters push and ends the session; the route guard then shows sign-in.
+  const { mutate: signOut, isPending: signingOut } = useMutation({ mutationFn: endSession });
 
   const [petTab, setPetTab] = useState<PetTab>('passport');
   const [lunaOpen, setLunaOpen] = useState(false);
@@ -68,7 +76,10 @@ export function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: bottomNavClearance(insets.bottom) + 36 }]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.topBar}>
           <Pressable
             onPress={() => go('closeProfile')}
@@ -94,9 +105,10 @@ export function ProfileScreen() {
                 <Text style={styles.ownerName}>Sarah Jenkins</Text>
                 <Icon name="verified" size={20} color={colors.primary} />
               </View>
-              <View style={styles.inlineRow}>
+              {/* The pin stays beside the line when it wraps on narrow phones. */}
+              <View style={styles.iconLine}>
                 <Icon name="location-on" size={15} color={colors.slate} />
-                <Text style={styles.meta}>San Francisco, CA · Since Mar 2023</Text>
+                <Text style={[styles.meta, styles.shrink]}>San Francisco, CA · Since Mar 2023</Text>
               </View>
               <Badge label="Verified Pet Parent" tone="primary" />
             </View>
@@ -130,7 +142,7 @@ export function ProfileScreen() {
           icon="calendar-month"
           action={{ label: 'View History', onPress: () => goToTab('activities') }}
         >
-          <View style={styles.serviceRow}>
+          <View style={[styles.serviceRow, compact && styles.serviceRowCompact]}>
             <ServiceCard
               icon="directions-walk"
               tint={colors.primaryTint}
@@ -221,9 +233,12 @@ export function ProfileScreen() {
                     }}
                     role="tab"
                     aria-selected={selected}
-                    style={[styles.petTab, selected && styles.petTabActive]}
+                    style={[styles.petTab, compact && styles.petTabCompact, selected && styles.petTabActive]}
                   >
-                    <Text style={[styles.petTabText, selected && styles.petTabTextActive]}>
+                    <Text
+                      maxFontSizeMultiplier={1.3}
+                      style={[styles.petTabText, selected && styles.petTabTextActive]}
+                    >
                       {tab.label}
                     </Text>
                   </Pressable>
@@ -420,12 +435,14 @@ export function ProfileScreen() {
         </Section>
 
         <Pressable
-          onPress={() => go('signOut')}
+          onPress={() => signOut()}
+          disabled={signingOut}
           accessibilityRole="button"
+          accessibilityState={{ disabled: signingOut }}
           style={({ pressed }) => [styles.logout, pressed && styles.pressed]}
         >
           <Icon name="logout" size={20} color={colors.coralInk} />
-          <Text style={styles.logoutText}>Log Out of PawPal</Text>
+          <Text style={styles.logoutText}>{signingOut ? 'Logging out…' : 'Log Out of PawPal'}</Text>
         </Pressable>
         <Text style={styles.version}>{withVersion('PawPal App')} · Made with 🐾 for Barnaby & Luna</Text>
       </ScrollView>
@@ -504,8 +521,9 @@ interface ServiceCardProps {
 }
 
 function ServiceCard({ icon, tint, ink, label, count, detail, footer }: ServiceCardProps) {
+  const { compact } = useResponsive();
   return (
-    <View style={[styles.card, styles.service]}>
+    <View style={[styles.card, styles.service, compact && styles.serviceCompact]}>
       <View style={styles.serviceTop}>
         <View style={[styles.serviceIcon, { backgroundColor: tint }]}>
           <Icon name={icon} size={18} color={ink} />
@@ -513,7 +531,8 @@ function ServiceCard({ icon, tint, ink, label, count, detail, footer }: ServiceC
         <Text style={[styles.serviceLabel, { color: ink }]}>{label.toUpperCase()}</Text>
       </View>
       <Text style={styles.serviceCount}>{count}</Text>
-      <Text style={styles.meta} numberOfLines={1}>
+      {/* Three cards to a row: on narrow phones the detail may take a second line. */}
+      <Text style={styles.meta} numberOfLines={compact ? 2 : 1}>
         {detail}
       </Text>
       <View style={styles.serviceFooter}>{footer}</View>
@@ -681,18 +700,25 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 16,
     paddingTop: 4,
-    paddingBottom: BOTTOM_NAV_HEIGHT + 48,
     gap: 22,
   },
   flex: {
     flex: 1,
     gap: 2,
   },
+  shrink: {
+    flexShrink: 1,
+  },
   inlineRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     flexWrap: 'wrap',
+  },
+  iconLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   spaceBetween: {
     flexDirection: 'row',
@@ -820,10 +846,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
   },
+  serviceRowCompact: {
+    gap: 8,
+  },
   service: {
     flex: 1,
     padding: 12,
     gap: 2,
+  },
+  serviceCompact: {
+    paddingHorizontal: 10,
   },
   serviceTop: {
     flexDirection: 'row',
@@ -946,11 +978,19 @@ const styles = StyleSheet.create({
   petTab: {
     flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 9,
     borderRadius: radii.full,
     backgroundColor: colors.input,
     borderWidth: 1,
     borderColor: colors.inputBorder,
+  },
+  // Narrow phones: each tab grows from its label's width, so the longest label keeps its padding.
+  petTabCompact: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 'auto',
+    paddingHorizontal: 4,
   },
   petTabActive: {
     backgroundColor: colors.primary,
@@ -960,6 +1000,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semibold,
     fontSize: 12,
     color: colors.slate,
+    textAlign: 'center',
   },
   petTabTextActive: {
     fontFamily: fonts.bold,

@@ -10,6 +10,12 @@ import { Icon } from './Icon';
 
 /** Height of the floating bar, for content padding underneath it. */
 export const BOTTOM_NAV_HEIGHT = 68;
+/** The bar floats this far above the screen edge, or above the system navigation bar when that is taller. */
+const BOTTOM_NAV_GAP = 12;
+
+/** Distance from the screen's bottom edge to the top of the bar, for a scroll view's bottom padding. */
+export const bottomNavClearance = (bottomInset: number) =>
+  Math.max(bottomInset, BOTTOM_NAV_GAP) + BOTTOM_NAV_HEIGHT;
 
 const BAR_PADDING = 6;
 /** Horizontal drag distance before a touch becomes a scrub across the tabs. */
@@ -193,7 +199,7 @@ export function BottomNavigation<K extends string>({
   };
 
   return (
-    <View role="tablist" style={[styles.bar, { bottom: Math.max(insets.bottom, 12) }]}>
+    <View role="tablist" style={[styles.bar, { bottom: Math.max(insets.bottom, BOTTOM_NAV_GAP) }]}>
       <View
         ref={trackRef}
         style={styles.track}
@@ -407,11 +413,18 @@ function TabButton({
           </Animated.View>
         </Animated.View>
         <View style={styles.labelBox}>
-          <Animated.Text style={[styles.label, { opacity: styleAnim.idleOpacity }]}>
+          {/* Fixed-height bar: labels follow the font size only up to 1.3×. */}
+          <Animated.Text
+            maxFontSizeMultiplier={1.3}
+            numberOfLines={1}
+            style={[styles.label, { opacity: styleAnim.idleOpacity }]}
+          >
             {label}
           </Animated.Text>
           <Animated.Text
             aria-hidden
+            maxFontSizeMultiplier={1.3}
+            numberOfLines={1}
             style={[styles.label, styles.labelActive, styles.layer, { opacity: styleAnim.activeOpacity }]}
           >
             {label}

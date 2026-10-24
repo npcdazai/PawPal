@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
+import { useResponsive } from '../theme/responsive';
 import { Icon } from '../components/Icon';
 import { Avatar } from '../components/Avatar';
 import { ActionSheet } from '../components/ActionSheet';
@@ -50,6 +51,11 @@ const COMPLETE_DELAY_MS = 650;
 const MAP_PADDING = { top: 120, right: 60, bottom: 90, left: 60 };
 const TRAIL_AHEAD = '#8FAEFF';
 const STAGES = ['gate', 'Garden Loop', 'Return & Handover'] as const;
+/** The map's share of the window; short phones give the walk sheet a little more. */
+const MAP_SHARE = 0.46;
+const MAP_SHARE_SHORT = 0.42;
+/** The check-in photo viewer, at the design size. */
+const PHOTO_HEIGHT = 220;
 
 const EVENT_COLOR: Record<WalkEventKind, string> = {
   pee: colors.primary,
@@ -81,7 +87,7 @@ const PIN_DETAIL_MS = 3500;
 /** Screen 8 — LIVE_WALK_TRACKER: the society loop with timestamped proof of care. */
 export function LiveWalkScreen() {
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
+  const r = useResponsive();
   const { go } = useAppNavigation();
   const { bark, barkWith, navigate, setWalking, face } = useMascotActions();
   const { hapticsEnabled } = useMascotStatus();
@@ -159,7 +165,9 @@ export function LiveWalkScreen() {
   const society = SOCIETIES[booking.society];
   const walker = WALKERS[booking.walkerId];
   const firstName = walker.name.split(' ')[0];
-  const mapHeight = Math.round(windowHeight * 0.46);
+  const mapHeight = Math.round(r.height * (r.short ? MAP_SHARE_SHORT : MAP_SHARE));
+  // Narrow phones: tighter stat tiles, so their labels keep to fewer lines.
+  const tileStyle = [styles.tile, r.compact && styles.tileCompact];
   const percent = Math.round(status.progress * 100);
   const { done: trail, rest: ahead } = splitLine(loop, status.progress);
   const photo = status.photos[0] ?? null;
@@ -298,8 +306,8 @@ export function LiveWalkScreen() {
             </View>
           </View>
 
-          <View style={styles.bento}>
-            <View style={styles.tile}>
+          <View style={[styles.bento, r.compact && styles.bentoCompact]}>
+            <View style={tileStyle}>
               <View style={styles.tileHead}>
                 <Icon name="route" size={16} color={colors.primary} />
                 <Text style={styles.tileLabel}>Distance & Pace</Text>
@@ -309,7 +317,7 @@ export function LiveWalkScreen() {
               </Text>
               <Text style={styles.tileMeta}>{status.pace ? `${Math.round(status.pace)} min/km 🐾` : 'Warming up 🐾'}</Text>
             </View>
-            <View style={styles.tile}>
+            <View style={tileStyle}>
               <View style={styles.tileHead}>
                 <Icon name="water-drop" size={16} color={colors.coral} />
                 <Text style={styles.tileLabel}>Potty Count</Text>
@@ -321,7 +329,7 @@ export function LiveWalkScreen() {
                 {status.poop > 0 ? '✓ Bagged & binned' : 'Waiting for stops'}
               </Text>
             </View>
-            <View style={styles.tile}>
+            <View style={tileStyle}>
               <View style={styles.tileHead}>
                 <Icon name="health-and-safety" size={16} color={colors.successInk} />
                 <Text style={styles.tileLabel}>Insurance</Text>
@@ -418,7 +426,7 @@ export function LiveWalkScreen() {
           aria-label="Close photo"
         >
           <View style={styles.photoCard}>
-            <Image source={LIVE_PHOTO} style={styles.photo} contentFit="cover" />
+            <Image source={LIVE_PHOTO} style={[styles.photo, { height: r.scaleHeight(PHOTO_HEIGHT) }]} contentFit="cover" />
             <Text style={styles.photoCaption}>📸 Barnaby in his chest harness • {walkClock(booking, photo.at)}</Text>
             <Text style={styles.meta}>In-App Live Camera • GPS {pointAlong(loop, photo.at).map((n) => n.toFixed(4)).reverse().join(', ')}</Text>
             <Text style={styles.meta}>Tap anywhere to close</Text>
@@ -726,12 +734,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
+  bentoCompact: {
+    gap: 6,
+  },
   tile: {
     flex: 1,
     gap: 4,
     padding: 12,
     borderRadius: radii.md,
     backgroundColor: '#F4F6FB',
+  },
+  tileCompact: {
+    padding: 10,
   },
   tileHead: {
     flexDirection: 'row',
@@ -900,7 +914,6 @@ const styles = StyleSheet.create({
   },
   photo: {
     width: '100%',
-    height: 220,
     borderRadius: radii.lg,
   },
   photoCaption: {

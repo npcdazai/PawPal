@@ -34,6 +34,7 @@ export function Badge({ label, tone = 'primary', dot = false, uppercase = false,
           uppercase && styles.uppercase,
         ]}
         numberOfLines={1}
+        maxFontSizeMultiplier={1.3}
       >
         {label}
       </Text>

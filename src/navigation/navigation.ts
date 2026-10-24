@@ -28,7 +28,16 @@ interface RouteConfig {
   gestureEnabled?: boolean;
 }
 
+/**
+ * Who may open a group's routes (the root layout's route guard):
+ *  - signedOut → before sign-in only
+ *  - nameStep  → signed in, while the account has no name yet
+ *  - signedIn  → signed in with a name
+ */
+export type RouteAccess = 'signedOut' | 'nameStep' | 'signedIn';
+
 interface GroupConfig {
+  access: RouteAccess;
   /** Show the common bottom navigation bar on every route in this group. */
   tabBar: boolean;
   /**
@@ -63,15 +72,24 @@ interface NavigationConfig {
 export const NAVIGATION = {
   groups: {
     onboarding: {
+      access: 'signedOut',
       tabBar: false,
       routes: {
         splash: { name: 'index', path: '/', title: 'Welcome' },
-        login: { name: 'login', path: '/login', title: 'Log in' },
-        register: { name: 'register', path: '/register', title: 'Create account' },
+        login: { name: 'login', path: '/login', title: 'Sign in' },
+      },
+    },
+    // A new account's first stop: phone sign-in creates it without a name.
+    setup: {
+      access: 'nameStep',
+      tabBar: false,
+      routes: {
+        yourName: { name: 'your-name', path: '/your-name', title: 'Your name', gestureEnabled: false },
       },
     },
     // The tab screens: one tab navigator on the root stack, in tab-bar order.
     app: {
+      access: 'signedIn',
       tabBar: true,
       layout: '(tabs)',
       routes: {
@@ -81,6 +99,7 @@ export const NAVIGATION = {
     },
     // Full-screen task flows with their own bottom action bar.
     tasks: {
+      access: 'signedIn',
       tabBar: false,
       routes: {
         societySetup: { name: 'book-walk', path: '/book-walk', title: 'Society & Behavioral Profile' },
@@ -91,13 +110,11 @@ export const NAVIGATION = {
     },
   },
 
+  // Signing in, naming a new account and signing out need no flow: the root
+  // layout's route guard moves to the screens the new state allows.
   flows: {
     begin: { to: 'login', action: 'replace' }, //            Splash "Tap to Begin"
-    register: { to: 'register', action: 'push' }, //         Login "Register now"
-    signIn: { to: 'login', action: 'back' }, //              Register "Sign in"
-    authenticated: { to: 'dashboard', action: 'reset' }, //  Log in / Create Account
     closeProfile: { to: 'dashboard', action: 'tab' }, //     Profile back arrow
-    signOut: { to: 'login', action: 'reset' }, //            Profile "Log out"
     bookWalk: { to: 'societySetup', action: 'push' }, //     "Book a Dog Walker" / Log Walk / Rebook
     closeBooking: { to: 'dashboard', action: 'back' }, //    Society profile back arrow
     chooseWalkPlan: { to: 'walkPlan', action: 'push' }, //   "Choose Walk Plan & Slot"
@@ -138,6 +155,7 @@ export type DashboardSection = NonNullable<Extract<Tab, { route: 'dashboard' }>[
 export interface RouteEntry extends RouteConfig {
   key: RouteKey;
   group: GroupKey;
+  access: RouteAccess;
   tabBar: boolean;
   layout?: string;
 }
@@ -150,6 +168,7 @@ export const ROUTE_LIST: readonly RouteEntry[] = (Object.keys(NAVIGATION.groups)
       ...route,
       key: key as RouteKey,
       group,
+      access: config.access,
       tabBar: config.tabBar,
       layout: config.layout,
     }));
@@ -164,7 +183,7 @@ export const ROUTES = Object.fromEntries(ROUTE_LIST.map((route) => [route.key, r
 /** Screens hosted by the '(tabs)' navigator, in tab order. */
 export const TAB_ROUTES = ROUTE_LIST.filter((route) => route.layout === '(tabs)');
 
-type StackScreen = Pick<RouteConfig, 'name' | 'title' | 'gestureEnabled'>;
+type StackScreen = Pick<RouteEntry, 'name' | 'title' | 'gestureEnabled' | 'access'>;
 
 /**
  * Screens of the root stack: each route without a layout, plus one screen per
@@ -173,7 +192,7 @@ type StackScreen = Pick<RouteConfig, 'name' | 'title' | 'gestureEnabled'>;
 export const STACK_SCREENS: readonly StackScreen[] = ROUTE_LIST.flatMap((route, index): StackScreen[] => {
   if (!route.layout) return [route];
   const first = ROUTE_LIST.findIndex((other) => other.layout === route.layout) === index;
-  return first ? [{ name: route.layout, title: route.title, gestureEnabled: false }] : [];
+  return first ? [{ name: route.layout, title: route.title, gestureEnabled: false, access: route.access }] : [];
 });
 
 export const TABS: readonly Tab[] = NAVIGATION.tabBar.tabs;

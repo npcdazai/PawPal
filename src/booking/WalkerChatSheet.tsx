@@ -6,6 +6,7 @@ import { fonts, typography } from '../theme/typography';
 import { Icon } from '../components/Icon';
 import { Avatar } from '../components/Avatar';
 import { NATIVE_DRIVER } from '../theme/motion';
+import { useResponsive } from '../theme/responsive';
 import type { Walker } from '../data/careTeam';
 
 interface ChatMessage {
@@ -23,6 +24,8 @@ interface WalkerChatSheetProps {
 }
 
 const AUTO_REPLY_MS = 1100;
+/** The message thread's tallest, at the design size; shorter on short phones. */
+const THREAD_MAX_HEIGHT = 220;
 
 /** One chat bubble; primitive props so earlier messages don't re-render. */
 const ChatBubble = memo(function ChatBubble({ from, text }: Omit<ChatMessage, 'id'>) {
@@ -41,6 +44,7 @@ const BubbleGap = () => <View style={styles.bubbleGap} />;
 /** Quick chat preview with the walker: tap a reply, the walker answers. */
 export function WalkerChatSheet({ walker, latest, quickReplies, onClose }: WalkerChatSheetProps) {
   const insets = useSafeAreaInsets();
+  const { scaleHeight } = useResponsive();
   const [enter] = useState(() => new Animated.Value(0));
   const [messages, setMessages] = useState<ChatMessage[]>(() => [{ id: 0, from: 'walker', text: latest }]);
   const [typing, setTyping] = useState(false);
@@ -110,7 +114,7 @@ export function WalkerChatSheet({ walker, latest, quickReplies, onClose }: Walke
           keyExtractor={messageKey}
           renderItem={renderMessage}
           ItemSeparatorComponent={BubbleGap}
-          style={styles.thread}
+          style={{ maxHeight: scaleHeight(THREAD_MAX_HEIGHT) }}
           contentContainerStyle={styles.threadContent}
         />
 
@@ -173,9 +177,6 @@ const styles = StyleSheet.create({
   },
   meta: {
     ...typography.bodySm,
-  },
-  thread: {
-    maxHeight: 220,
   },
   threadContent: {
     paddingVertical: 4,

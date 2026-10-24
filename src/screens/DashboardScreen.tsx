@@ -1,16 +1,17 @@
 import React, { memo, useCallback, useRef, useState, type ComponentRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
+import { useResponsive } from '../theme/responsive';
 import { Icon } from '../components/Icon';
 import { Badge } from '../components/Badge';
 import { CircularProgress } from '../components/CircularProgress';
 import { ProgressBar } from '../components/ProgressBar';
 import { Toast, useToast } from '../components/Toast';
-import { BOTTOM_NAV_HEIGHT } from '../components/BottomNavigation';
+import { BOTTOM_NAV_HEIGHT, bottomNavClearance } from '../components/BottomNavigation';
 import { DASHBOARD_SECTIONS, type DashboardSection } from '../navigation/navigation';
 import { useAppNavigation } from '../navigation/useAppNavigation';
 import { MascotDockSlot } from '../mascot/MascotDockSlot';
@@ -86,6 +87,8 @@ const toSection = (value: string | undefined): DashboardSection =>
   DASHBOARD_SECTIONS.find((section) => section === value) ?? DASHBOARD_SECTIONS[0];
 
 export function DashboardScreen() {
+  const insets = useSafeAreaInsets();
+  const { compact } = useResponsive();
   const { go, goToTab } = useAppNavigation();
   const { bookings } = useBookings();
   const nextWalk = bookings.find((booking) => booking.status !== 'cancelled');
@@ -207,7 +210,7 @@ export function DashboardScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
         ref={scrollRef}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: bottomNavClearance(insets.bottom) + 36 }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Top navigation */}
@@ -390,6 +393,7 @@ export function DashboardScreen() {
                 icon={moment.icon}
                 tint={moment.tint}
                 ink={moment.ink}
+                lines={compact ? 2 : 1}
               />
             ))}
           </View>
@@ -534,18 +538,29 @@ function WalkerBookingCard({ booking, onBook, onRebook, onTrack }: WalkerBooking
   );
 }
 
-/** One Recent Moments row; primitive props so unchanged rows skip re-rendering. */
-const MomentRow = memo(function MomentRow({ title, detail, time, icon, tint, ink }: Omit<Moment, 'id'>) {
+/**
+ * One Recent Moments row; primitive props so unchanged rows skip re-rendering.
+ * `lines`: narrow phones give the title and detail a second line instead of cutting them off.
+ */
+const MomentRow = memo(function MomentRow({
+  title,
+  detail,
+  time,
+  icon,
+  tint,
+  ink,
+  lines,
+}: Omit<Moment, 'id'> & { lines: number }) {
   return (
     <View style={styles.momentRow}>
       <View style={[styles.momentIcon, { backgroundColor: tint }]}>
         <Icon name={icon} size={20} color={ink} />
       </View>
       <View style={styles.momentCopy}>
-        <Text style={styles.momentTitle} numberOfLines={1}>
+        <Text style={styles.momentTitle} numberOfLines={lines}>
           {title}
         </Text>
-        <Text style={styles.cardMeta} numberOfLines={1}>
+        <Text style={styles.cardMeta} numberOfLines={lines}>
           {detail}
         </Text>
       </View>
@@ -571,7 +586,6 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 16,
     paddingTop: 4,
-    paddingBottom: BOTTOM_NAV_HEIGHT + 48,
     gap: 22,
   },
   topBar: {
@@ -735,6 +749,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   walkerTotal: {
+    flexShrink: 1,
     fontFamily: fonts.extrabold,
     fontSize: 18,
     color: colors.ink,

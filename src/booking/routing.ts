@@ -1,59 +1,53 @@
 import { useEffect, useMemo, useState } from 'react';
+import { walkingRoute } from '../api/maps';
+import type { LatLng } from '../api/types';
 import { makeLine, type GeoLine, type LngLat } from './geo';
 
 /**
- * OSRM servers, tried in order. The OSM community server runs the real foot
- * profile (sidewalks, park paths). The public project-osrm.org demo only has
- * the car network loaded — it ignores the `foot` profile — so it's the backup.
+ * Walking routes come from the PawPal API (GET /maps/route), which proxies
+ * OSRM's foot profile, caches each answer for a day and keeps to the public
+ * server's usage policy. It routes between two points only.
  */
-const OSRM_ROUTE_URLS = [
-  'https://routing.openstreetmap.de/routed-foot/route/v1/driving',
-  'https://router.project-osrm.org/route/v1/foot',
-] as const;
-const ROUTE_TIMEOUT_MS = 6000;
-
 const cache = new Map<string, readonly LngLat[]>();
 
-/** "lng,lat;lng,lat;…" — the OSRM coordinate path, also the cache key. */
+/** "lng,lat;lng,lat;…" at 5 decimals (the precision the server caches by): the cache key. */
 const pathFor = (waypoints: readonly LngLat[]) =>
   waypoints.map(([lng, lat]) => `${lng.toFixed(5)},${lat.toFixed(5)}`).join(';');
+
+/** The start and end of a two-point path, or null for any other path. */
+export function routeEnds(path: string): { from: LatLng; to: LatLng } | null {
+  const points = path.split(';').map((pair) => pair.split(',').map(Number));
+  if (points.length !== 2 || points.some((point) => point.length !== 2 || !point.every(Number.isFinite))) {
+    return null;
+  }
+  const [[fromLng, fromLat], [toLng, toLat]] = points;
+  return { from: { lat: fromLat, lng: fromLng }, to: { lat: toLat, lng: toLng } };
+}
 
 async function fetchRoute(path: string): Promise<readonly LngLat[] | null> {
   const hit = cache.get(path);
   if (hit) return hit;
-  for (const base of OSRM_ROUTE_URLS) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), ROUTE_TIMEOUT_MS);
-    try {
-      const response = await fetch(`${base}/${path}?overview=full&geometries=geojson`, {
-        signal: controller.signal,
-      });
-      if (!response.ok) continue;
-      const json = (await response.json()) as {
-        code?: string;
-        routes?: { geometry?: { coordinates?: [number, number][] } }[];
-      };
-      const coordinates = json.routes?.[0]?.geometry?.coordinates;
-      if (json.code === 'Ok' && coordinates && coordinates.length >= 2) {
-        const route = coordinates.map(([lng, lat]): LngLat => [lng, lat]);
-        cache.set(path, route);
-        return route;
-      }
-    } catch {
-      // Offline, timed out or rate limited: try the next server.
-    } finally {
-      clearTimeout(timeout);
-    }
+  // The API takes a start and an end; multi-stop paths keep their local shape.
+  const ends = routeEnds(path);
+  if (!ends) return null;
+  try {
+    const { coordinates } = await walkingRoute(ends.from, ends.to);
+    if (coordinates.length < 2) return null;
+    const route = coordinates.map(([lng, lat]): LngLat => [lng, lat]);
+    cache.set(path, route);
+    return route;
+  } catch {
+    // No route (404), maps busy, or offline: the caller keeps its fallback line.
+    return null;
   }
-  return null;
 }
 
-/** Fetch a walking route through `waypoints` (null if no server answered). */
+/** Fetch a walking route through `waypoints` (null if there's none to be had). */
 export const fetchWalkingRoute = (waypoints: readonly LngLat[]) => fetchRoute(pathFor(waypoints));
 
 /**
  * A walking route through `waypoints`: the `fallback` geometry straight away,
- * swapped for the routed street path as soon as OSRM answers.
+ * swapped for the routed street path as soon as the API answers.
  */
 export function useWalkingRoute(waypoints: readonly LngLat[], fallback: readonly LngLat[]): GeoLine {
   const path = pathFor(waypoints);

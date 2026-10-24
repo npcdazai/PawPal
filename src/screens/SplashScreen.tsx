@@ -9,16 +9,18 @@ import { PrimaryButton } from '../components/Button';
 import { MascotDockSlot } from '../mascot/MascotDockSlot';
 import { useMascotActions, useMascotStatus } from '../mascot/MascotProvider';
 import { NATIVE_DRIVER } from '../theme/motion';
+import { useResponsive } from '../theme/responsive';
 import { useAppNavigation } from '../navigation/useAppNavigation';
 import { withVersion } from '../config/appInfo';
 
-/** The hero-circle slot is 220px; the orbs float just outside it. */
+/** The hero-circle slot is 220px at the design size (it shrinks on short phones); the orbs float just outside it. */
 const HERO_SIZE = 220;
 
 export function SplashScreen() {
   const { go } = useAppNavigation();
   const { bark } = useMascotActions();
   const { delight } = useMascotStatus();
+  const heroSize = useResponsive().scaleHeight(HERO_SIZE);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -29,7 +31,7 @@ export function SplashScreen() {
         <Badge label={`🐾 ${withVersion('PawPal Care Engine')}`} tone="white" style={styles.versionTag} />
 
         <View style={styles.heroGroup}>
-          <View style={styles.hero}>
+          <View style={[styles.hero, { width: heroSize + 40, height: heroSize + 12 }]}>
             <View style={[styles.orb, styles.orbAmber]} />
             <View style={[styles.orb, styles.orbCoral]} />
             <View style={[styles.orb, styles.orbBlue]} />
@@ -50,20 +52,7 @@ export function SplashScreen() {
           <Text style={styles.subtitle}>Your loyal daily pet health, wellness & routine buddy</Text>
         </View>
 
-        <View style={styles.cards}>
-          <View style={styles.card}>
-            <View style={styles.cardTop}>
-              <View style={[styles.cardIcon, { backgroundColor: colors.coralTint }]}>
-                <Icon name="local-fire-department" size={20} color={colors.coral} />
-              </View>
-              <Badge label="Ready" tone="success" dot />
-            </View>
-            <Text style={styles.cardLabel}>Daily Care Streak</Text>
-            <Text style={styles.cardValue}>14 happy days logged</Text>
-          </View>
-
-          <DelightCard count={delight} onPress={bark} />
-        </View>
+        <DelightCard count={delight} onPress={bark} />
 
         <PrimaryButton
           label="Tap to Begin"
@@ -137,8 +126,6 @@ const styles = StyleSheet.create({
   },
   hero: {
     alignSelf: 'center',
-    width: HERO_SIZE + 40,
-    height: HERO_SIZE + 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -198,12 +185,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     maxWidth: 280,
   },
-  cards: {
-    flexDirection: 'row',
-    gap: 12,
-  },
   card: {
-    flex: 1,
     padding: 14,
     gap: 4,
     borderRadius: radii.lg,
@@ -225,9 +207,6 @@ const styles = StyleSheet.create({
   },
   cardLabel: {
     ...typography.overline,
-  },
-  cardValue: {
-    ...typography.subhead,
   },
   delightRow: {
     flexDirection: 'row',

@@ -13,6 +13,12 @@ import packageJson from './package.json';
  *  - EXPO_PUBLIC_EAS_PROJECT_ID  EAS project id; enables EAS Update.
  *  - SENTRY_ORG / SENTRY_PROJECT / SENTRY_AUTH_TOKEN  source map uploads.
  *  - EXPO_PUBLIC_SENTRY_DSN      crash reporting (read by the app at runtime).
+ *  - EXPO_PUBLIC_API_URL         the PawPal API (read at runtime; required in
+ *                                preview/production builds, HTTPS).
+ *  - GOOGLE_SERVICES_JSON / GOOGLE_SERVICE_INFO_PLIST  paths to the Firebase
+ *                                project's google-services.json (Android) and
+ *                                GoogleService-Info.plist (iOS), e.g. EAS file
+ *                                variables. Android push (FCM) needs the first.
  */
 
 const VARIANTS = ['development', 'preview', 'production'] as const;
@@ -40,6 +46,8 @@ const VARIANT_SUFFIX: Record<AppVariant, { id: string; name: string }> = {
 
 const bundleId = `${BASE_BUNDLE_ID}${VARIANT_SUFFIX[appVariant].id}`;
 const easProjectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
+const googleServicesJson = process.env.GOOGLE_SERVICES_JSON;
+const googleServiceInfoPlist = process.env.GOOGLE_SERVICE_INFO_PLIST;
 
 const config: ExpoConfig = {
   name: `PawPal${VARIANT_SUFFIX[appVariant].name}`,
@@ -57,6 +65,7 @@ const config: ExpoConfig = {
     // Phone-only portrait layout.
     supportsTablet: false,
     bundleIdentifier: bundleId,
+    ...(googleServiceInfoPlist ? { googleServicesFile: googleServiceInfoPlist } : null),
   },
   android: {
     adaptiveIcon: {
@@ -67,6 +76,7 @@ const config: ExpoConfig = {
     },
     predictiveBackGestureEnabled: false,
     package: bundleId,
+    ...(googleServicesJson ? { googleServicesFile: googleServicesJson } : null),
     allowBackup: false,
     // Pulled in by dependencies' manifests; PawPal uses none of them.
     blockedPermissions: [
@@ -90,6 +100,8 @@ const config: ExpoConfig = {
     '@maplibre/maplibre-react-native',
     'expo-web-browser',
     'expo-image',
+    // Walk updates (FCM on Android, APNs on iOS); the device token goes to the API.
+    ['expo-notifications', { color: '#2962FF' }],
     [
       'expo-splash-screen',
       {

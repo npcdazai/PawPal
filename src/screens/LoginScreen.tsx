@@ -1,17 +1,27 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useMutation } from '@tanstack/react-query';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
 import { Icon } from '../components/Icon';
 import { Badge } from '../components/Badge';
 import { FormField } from '../components/FormField';
-import { PrimaryButton, SecondaryButton } from '../components/Button';
+import { PrimaryButton } from '../components/Button';
 import { Toast, useToast } from '../components/Toast';
 import { MascotDockSlot } from '../mascot/MascotDockSlot';
 import { useMascotActions, useMascotState } from '../mascot/MascotProvider';
 import type { MascotState } from '../mascot/mascotModel';
-import { useAppNavigation } from '../navigation/useAppNavigation';
+import { isApiError } from '../api/errors';
+import { useAuth } from '../auth/AuthProvider';
+import { cleanSmsCode, formatPhone, isSmsCode, SMS_CODE_LENGTH, toE164 } from '../auth/phoneNumber';
+import {
+  confirmCode,
+  PhoneSignInError,
+  requestCode,
+  signInMethod,
+  UNCONFIGURED_MESSAGE,
+} from '../auth/phoneSignIn';
 
 /** The card rises over the header's bottom padding, never over Barnaby's slot. */
 const CARD_OVERLAP = 44;
@@ -25,18 +35,83 @@ const STATUS_COPY: Partial<Record<MascotState, string>> = {
   STATE_EXIT_TO_LEFT: 'Barnaby is zooming ahead',
 };
 
+/** Sign-in failures carry user-facing copy (ours or the API's); anything else gets a generic line. */
+const failureCopy = (error: unknown) =>
+  error instanceof PhoneSignInError || isApiError(error) ? error.message : 'Something went wrong. Try again.';
+
+/**
+ * Phone sign-in (APP_INTEGRATION §2): the number, then the 6-digit SMS code.
+ * The first sign-in creates the account. Once the session is kept, the root
+ * layout's route guard opens the app, so this screen never navigates itself.
+ */
 export function LoginScreen() {
-  const { go } = useAppNavigation();
+  const { signIn } = useAuth();
   const { focusField, blurField } = useMascotActions();
   const state = useMascotState();
   const { message, show } = useToast();
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [keepLoggedIn, setKeepLoggedIn] = useState(true);
+  const [method] = useState(signInMethod);
+  const [phone, setPhone] = useState('');
+  const [code, setCode] = useState('');
+  /** The number the code went to (E.164); null on the phone step. */
+  const [sentTo, setSentTo] = useState<string | null>(null);
 
-  const enterDashboard = () => go('authenticated');
+  const {
+    mutate: sendCode,
+    reset: resetSend,
+    isPending: sending,
+    error: sendError,
+  } = useMutation({ mutationFn: requestCode });
+  const {
+    mutate: verifyCode,
+    reset: resetVerify,
+    isPending: verifying,
+    error: verifyError,
+  } = useMutation({ mutationFn: confirmCode, onSuccess: signIn });
+
+  const unconfigured = method === 'unconfigured';
+  const phoneReady = toE164(phone) !== null;
+  const codeReady = isSmsCode(cleanSmsCode(code));
+
+  const submitPhone = () => {
+    if (!phoneReady || sending || unconfigured) return;
+    sendCode(phone, {
+      onSuccess: (e164) => {
+        setSentTo(e164);
+        setCode('');
+        resetVerify();
+      },
+    });
+  };
+
+  const resend = () => {
+    if (!sentTo || sending) return;
+    // The latest attempt's error shows: a failed resend replaces an earlier wrong code.
+    resetVerify();
+    sendCode(sentTo, {
+      onSuccess: () => {
+        setCode('');
+        resetVerify();
+        show(method === 'dev' ? 'New code sent: it’s in the API console' : 'New code sent 📲');
+      },
+    });
+  };
+
+  const submitCode = () => {
+    if (!codeReady || verifying) return;
+    resetSend();
+    verifyCode(code);
+  };
+
+  const changeNumber = () => {
+    setSentTo(null);
+    setCode('');
+    resetSend();
+    resetVerify();
+  };
+
+  // On the code step a failed resend shows too.
+  const error = sentTo ? (verifyError ?? sendError) : sendError;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -55,111 +130,138 @@ export function LoginScreen() {
             uppercase
             style={styles.statusPill}
           />
-          {/* Ducking for the password lowers him behind the slot's bottom edge. */}
+          {/* Ducking for the code lowers him behind the slot's bottom edge. */}
           <MascotDockSlot variant="auth-header" />
         </View>
 
         <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.title}>Welcome back!</Text>
-            <Text style={styles.subtitle}>
-              {"Sign in to sync Barnaby's wellness log and daily routines."}
-            </Text>
-          </View>
+          {sentTo ? (
+            <>
+              <View style={styles.cardHeader}>
+                <Text style={styles.title} role="heading">
+                  Enter your code
+                </Text>
+                <Text style={styles.subtitle}>
+                  {method === 'dev'
+                    ? `Signing in ${formatPhone(sentTo)}.`
+                    : `We texted a ${SMS_CODE_LENGTH}-digit code to ${formatPhone(sentTo)}.`}
+                </Text>
+              </View>
 
-          <FormField
-            label="Email Address"
-            icon="mail"
-            placeholder="alex@companions.pet"
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            textContentType="emailAddress"
-            returnKeyType="next"
-            accessory={<Badge label="PawID Ready" tone="primary" />}
-            onFocus={() => focusField('text')}
-            onBlur={blurField}
-          />
+              <FormField
+                label={`${SMS_CODE_LENGTH}-digit code`}
+                icon="sms"
+                placeholder="••••••"
+                value={code}
+                onChangeText={setCode}
+                keyboardType="number-pad"
+                textContentType="oneTimeCode"
+                autoComplete="sms-otp"
+                maxLength={SMS_CODE_LENGTH}
+                returnKeyType="go"
+                onSubmitEditing={submitCode}
+                editable={!verifying}
+                accessory={
+                  <Pressable onPress={changeNumber} accessibilityRole="button" hitSlop={8}>
+                    <Text style={styles.link}>Change number</Text>
+                  </Pressable>
+                }
+                onFocus={() => focusField('password')}
+                onBlur={blurField}
+              />
 
-          <FormField
-            label="Password"
-            icon="lock"
-            placeholder="Enter your password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry={!showPassword}
-            autoComplete="password"
-            textContentType="password"
-            returnKeyType="go"
-            onSubmitEditing={enterDashboard}
-            accessory={
-              <Pressable
-                onPress={() => show('Reset link sent to your inbox 📬')}
-                accessibilityRole="link"
-                hitSlop={8}
-              >
-                <Text style={styles.link}>Forgot Password?</Text>
-              </Pressable>
-            }
-            trailing={
-              <Pressable
-                onPress={() => setShowPassword((visible) => !visible)}
-                accessibilityRole="button"
-                accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
-                hitSlop={10}
-              >
-                <Icon
-                  name={showPassword ? 'visibility-off' : 'visibility'}
-                  size={20}
-                  color={colors.slate}
-                />
-              </Pressable>
-            }
-            onFocus={() => focusField('password')}
-            onBlur={blurField}
-          />
+              {method === 'dev' ? (
+                <Text style={styles.note}>
+                  Development build: no SMS is sent. The code is printed in the API console (and Metro).
+                </Text>
+              ) : null}
 
-          <Pressable
-            onPress={() => setKeepLoggedIn((value) => !value)}
-            role="checkbox"
-            aria-checked={keepLoggedIn}
-            style={styles.checkboxRow}
-          >
-            <View style={[styles.checkbox, keepLoggedIn && styles.checkboxOn]}>
-              {keepLoggedIn ? <Icon name="check" size={16} color={colors.onPrimary} /> : null}
-            </View>
-            <Text style={styles.checkboxLabel}>Keep me logged in for 30 days</Text>
-          </Pressable>
+              {error ? <ErrorLine message={failureCopy(error)} /> : null}
 
-          <PrimaryButton label="Log in" onPress={enterDashboard} />
+              <PrimaryButton
+                label={verifying ? 'Signing in…' : 'Verify & Sign In'}
+                trailingIcon={verifying ? null : 'arrow-forward'}
+                onPress={submitCode}
+                disabled={!codeReady || verifying}
+              />
 
-          <View style={styles.dividerRow}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or continue with</Text>
-            <View style={styles.dividerLine} />
-          </View>
+              <View style={styles.footer}>
+                <Text style={styles.footerText}>{"Didn't get it? "}</Text>
+                <Pressable
+                  onPress={resend}
+                  disabled={sending || verifying}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: sending || verifying }}
+                  hitSlop={8}
+                >
+                  <Text style={styles.footerLink}>{sending ? 'Sending…' : 'Send a new code'}</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={styles.cardHeader}>
+                <Text style={styles.title} role="heading">
+                  Welcome to PawPal
+                </Text>
+                <Text style={styles.subtitle}>
+                  Sign in or create your account with your mobile number.
+                </Text>
+              </View>
 
-          <View style={styles.ssoRow}>
-            <SecondaryButton label="🐾 PawPass ID" tone="blue" onPress={enterDashboard} />
-            <SecondaryButton label="🔑 Passkey" tone="peach" onPress={enterDashboard} />
-          </View>
+              <FormField
+                label="Mobile Number"
+                icon="phone-iphone"
+                placeholder="98765 43210"
+                value={phone}
+                onChangeText={setPhone}
+                keyboardType="phone-pad"
+                textContentType="telephoneNumber"
+                autoComplete="tel"
+                returnKeyType="go"
+                onSubmitEditing={submitPhone}
+                editable={!sending}
+                accessory={<Badge label="India +91" tone="primary" />}
+                onFocus={() => focusField('text')}
+                onBlur={blurField}
+              />
 
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>New companion parent? </Text>
-            <Pressable
-              onPress={() => go('register')}
-              accessibilityRole="link"
-              hitSlop={8}
-            >
-              <Text style={styles.footerLink}>Register now</Text>
-            </Pressable>
-          </View>
+              {unconfigured ? (
+                <View style={styles.notice} role="alert">
+                  <Icon name="info-outline" size={20} color={colors.amberInk} />
+                  <Text style={styles.noticeText}>{UNCONFIGURED_MESSAGE} Please update the app, or try again later.</Text>
+                </View>
+              ) : (
+                <Text style={styles.note}>
+                  {method === 'dev'
+                    ? 'Development build: signs in through the local API, no SMS is sent.'
+                    : `We'll text you a ${SMS_CODE_LENGTH}-digit code. SMS charges may apply.`}
+                </Text>
+              )}
+
+              {error ? <ErrorLine message={failureCopy(error)} /> : null}
+
+              <PrimaryButton
+                label={sending ? 'Sending code…' : 'Send Code'}
+                trailingIcon={sending ? null : 'arrow-forward'}
+                onPress={submitPhone}
+                disabled={!phoneReady || sending || unconfigured}
+              />
+            </>
+          )}
         </View>
       </ScrollView>
       <Toast message={message} />
     </SafeAreaView>
+  );
+}
+
+function ErrorLine({ message }: { message: string }) {
+  return (
+    <View style={styles.error} role="alert" accessibilityLiveRegion="polite">
+      <Icon name="error-outline" size={18} color={colors.coralInk} />
+      <Text style={styles.errorText}>{message}</Text>
+    </View>
   );
 }
 
@@ -213,46 +315,34 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.primary,
   },
-  checkboxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 7,
-    borderWidth: 1.5,
-    borderColor: colors.inputBorder,
-    backgroundColor: colors.input,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxOn: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primary,
-  },
-  checkboxLabel: {
-    ...typography.body,
-    color: colors.ink,
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.divider,
-  },
-  dividerText: {
+  note: {
     ...typography.bodySm,
-    color: colors.placeholder,
   },
-  ssoRow: {
+  notice: {
     flexDirection: 'row',
-    gap: 12,
+    alignItems: 'flex-start',
+    gap: 10,
+    padding: 12,
+    borderRadius: radii.md,
+    backgroundColor: colors.amberTint,
+  },
+  noticeText: {
+    ...typography.bodySm,
+    flex: 1,
+    color: colors.amberInk,
+  },
+  error: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    padding: 12,
+    borderRadius: radii.md,
+    backgroundColor: colors.coralTint,
+  },
+  errorText: {
+    ...typography.bodySm,
+    flex: 1,
+    color: colors.coralInk,
   },
   footer: {
     flexDirection: 'row',

@@ -1,16 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
 import { Icon } from '../components/Icon';
 import { PrimaryButton } from '../components/Button';
 import { MascotDockSlot } from '../mascot/MascotDockSlot';
 import { NATIVE_DRIVER } from '../theme/motion';
+import { useResponsive } from '../theme/responsive';
 import type { Walker } from '../data/careTeam';
 import { formatMoney } from './walkPlans';
 
 const TIPS = [20, 50, 100, 0] as const;
 const COMPACT_HEIGHT = 740;
+/** Barnaby's badge at the design size; it shrinks with the window like his popup slot. */
+const BADGE_SIZE = 140;
 
 interface WalkCompleteModalProps {
   walker: Walker;
@@ -23,9 +26,10 @@ interface WalkCompleteModalProps {
 
 /** "Walk Completed! Barnaby is Home Safe" — rate the walker and add a tip. */
 export function WalkCompleteModal({ walker, minutesWalked, km, kcal, fare, onDone }: WalkCompleteModalProps) {
-  const { height: windowHeight } = useWindowDimensions();
-  const compact = windowHeight < COMPACT_HEIGHT;
-  const badgeSize = compact ? 116 : 140;
+  const r = useResponsive();
+  const compact = r.height < COMPACT_HEIGHT;
+  // The popup slot scales BADGE_SIZE the same way, so Barnaby fills the ring at every size.
+  const badgeSize = r.scaleHeight(BADGE_SIZE);
   const [enter] = useState(() => new Animated.Value(0));
   const [rating, setRating] = useState(5);
   const [tip, setTip] = useState<number>(50);
@@ -57,7 +61,7 @@ export function WalkCompleteModal({ walker, minutesWalked, km, kcal, fare, onDon
         >
           <View style={[styles.content, compact && styles.contentCompact]}>
             <View style={[styles.badge, { width: badgeSize, height: badgeSize, borderRadius: badgeSize / 2 }]}>
-              <MascotDockSlot variant="popup" diameter={badgeSize} />
+              <MascotDockSlot variant="popup" diameter={BADGE_SIZE} />
               <View style={styles.homeBadge}>
                 <Icon name="home" size={18} color={colors.onPrimary} />
               </View>
@@ -93,7 +97,7 @@ export function WalkCompleteModal({ walker, minutesWalked, km, kcal, fare, onDon
             </View>
 
             <Text style={styles.label}>Add a tip for {firstName}</Text>
-            <View style={styles.tips}>
+            <View style={[styles.tips, r.compact && styles.tipsCompact]}>
               {TIPS.map((amount) => {
                 const selected = tip === amount;
                 return (
@@ -102,9 +106,9 @@ export function WalkCompleteModal({ walker, minutesWalked, km, kcal, fare, onDon
                     onPress={() => setTip(amount)}
                     role="radio"
                     aria-checked={selected}
-                    style={[styles.tip, selected && styles.tipSelected]}
+                    style={[styles.tip, r.compact && styles.tipCompact, selected && styles.tipSelected]}
                   >
-                    <Text style={[styles.tipText, selected && styles.tipTextSelected]}>
+                    <Text maxFontSizeMultiplier={1.3} style={[styles.tipText, selected && styles.tipTextSelected]}>
                       {amount === 0 ? 'No tip' : formatMoney(amount)}
                     </Text>
                   </Pressable>
@@ -226,7 +230,12 @@ const styles = StyleSheet.create({
   },
   tips: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
     gap: 8,
+  },
+  tipsCompact: {
+    gap: 6,
   },
   tip: {
     paddingHorizontal: 16,
@@ -235,6 +244,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.input,
     borderWidth: 1.5,
     borderColor: colors.inputBorder,
+  },
+  tipCompact: {
+    paddingHorizontal: 13,
   },
   tipSelected: {
     backgroundColor: colors.primary,
