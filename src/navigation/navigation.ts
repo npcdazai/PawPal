@@ -54,14 +54,10 @@ interface FlowConfig {
   action: NavAction;
 }
 
-interface TabConfig {
-  key: string;
-  label: string;
-  icon: string;
-  route: string;
-  /** Section param for tabs that scroll within a screen. */
-  section?: string;
-}
+/** A tab shows a '(tabs)' screen (`route`), or starts a task flow on top of them (`flow`). */
+type TabConfig =
+  | { key: string; label: string; icon: string; route: string }
+  | { key: string; label: string; icon: string; flow: string };
 
 interface NavigationConfig {
   groups: Record<string, GroupConfig>;
@@ -94,6 +90,7 @@ export const NAVIGATION = {
       layout: '(tabs)',
       routes: {
         dashboard: { name: 'dashboard', path: '/dashboard', title: 'Home' },
+        subscription: { name: 'subscription', path: '/subscription', title: 'Subscription' },
         profile: { name: 'profile', path: '/profile', title: 'Profile' },
       },
     },
@@ -115,11 +112,12 @@ export const NAVIGATION = {
   flows: {
     begin: { to: 'login', action: 'replace' }, //            Splash "Tap to Begin"
     closeProfile: { to: 'dashboard', action: 'tab' }, //     Profile back arrow
-    bookWalk: { to: 'societySetup', action: 'push' }, //     "Book a Dog Walker" / Log Walk / Rebook
+    bookWalk: { to: 'societySetup', action: 'push' }, //     Book Walk tab / home cards / Rebook
     closeBooking: { to: 'dashboard', action: 'back' }, //    Society profile back arrow
     chooseWalkPlan: { to: 'walkPlan', action: 'push' }, //   "Choose Walk Plan & Slot"
+    planWalk: { to: 'walkPlan', action: 'push' }, //         Home cards, once the society profile is set
     backToSociety: { to: 'societySetup', action: 'back' }, // Walk plan back arrow
-    trackWalker: { to: 'walkerEnRoute', action: 'stackOnRoot' }, // Paid → "Confirm Slot & View Walker" / "Track walker"
+    trackWalker: { to: 'walkerEnRoute', action: 'stackOnRoot' }, // Paid → "Confirm Slot & View Walker" / "View OTP"
     startLiveWalk: { to: 'liveWalk', action: 'replace' }, //  "Verify OTP & Start GPS Walk"
     openLiveWalk: { to: 'liveWalk', action: 'stackOnRoot' }, // Dashboard "Live walk"
     exitTracking: { to: 'dashboard', action: 'dismissTo' }, // Tracking back / cancel / walk done
@@ -127,15 +125,10 @@ export const NAVIGATION = {
 
   tabBar: {
     tabs: [
-      { key: 'home', label: 'Home', icon: 'home', route: 'dashboard', section: 'home' },
-      {
-        key: 'activities',
-        label: 'Activities',
-        icon: 'directions-run',
-        route: 'dashboard',
-        section: 'activities',
-      },
-      { key: 'health', label: 'Health', icon: 'monitor-heart', route: 'dashboard', section: 'health' },
+      { key: 'home', label: 'Home', icon: 'home', route: 'dashboard' },
+      // Not a tab screen: starts the booking flow on top of the tabs.
+      { key: 'bookWalk', label: 'Book Walk', icon: 'directions-walk', flow: 'bookWalk' },
+      { key: 'subscription', label: 'Subscription', icon: 'card-membership', route: 'subscription' },
       { key: 'profile', label: 'Profile', icon: 'person-outline', route: 'profile' },
     ],
   },
@@ -150,7 +143,18 @@ export type RouteKey = { [G in GroupKey]: keyof Groups[G]['routes'] }[GroupKey];
 export type FlowKey = keyof typeof NAVIGATION.flows;
 export type Tab = (typeof NAVIGATION.tabBar.tabs)[number];
 export type TabKey = Tab['key'];
-export type DashboardSection = NonNullable<Extract<Tab, { route: 'dashboard' }>['section']>;
+
+/**
+ * Tabs the old home screen had (its Activities and Health sections), kept so
+ * existing `goToTab('activities')` calls land somewhere sensible: walk history
+ * now lives on the Subscription tab, and health went with the old dashboard.
+ */
+export const LEGACY_TAB_KEYS = { activities: 'subscription', health: 'home' } as const satisfies Record<string, TabKey>;
+export type LegacyTabKey = keyof typeof LEGACY_TAB_KEYS;
+
+/** A current or legacy tab key → the tab to show. */
+export const resolveTabKey = (key: TabKey | LegacyTabKey): TabKey =>
+  key in LEGACY_TAB_KEYS ? LEGACY_TAB_KEYS[key as LegacyTabKey] : (key as TabKey);
 
 export interface RouteEntry extends RouteConfig {
   key: RouteKey;
@@ -197,16 +201,11 @@ export const STACK_SCREENS: readonly StackScreen[] = ROUTE_LIST.flatMap((route, 
 
 export const TABS: readonly Tab[] = NAVIGATION.tabBar.tabs;
 
-export const DASHBOARD_SECTIONS = TABS.flatMap((tab) =>
-  tab.route === 'dashboard' ? [tab.section] : []
-) as readonly DashboardSection[];
-
 export function routeForPath(pathname: string): RouteEntry | undefined {
   return ROUTE_LIST.find((route) => route.path === pathname);
 }
 
-/** The highlighted tab: the route's first tab unless a section param picks another. */
-export function activeTabFor(route: RouteKey, section?: string): Tab | undefined {
-  const candidates = TABS.filter((tab) => tab.route === route);
-  return candidates.find((tab) => 'section' in tab && tab.section === section) ?? candidates[0];
+/** The highlighted tab for a screen (flow tabs never are: their screens hide the bar). */
+export function activeTabFor(route: RouteKey): Tab | undefined {
+  return TABS.find((tab) => 'route' in tab && tab.route === route);
 }

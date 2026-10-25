@@ -10,9 +10,10 @@ import { colors } from '../../theme/colors';
 const PRELOAD_DELAY_MS = 1200;
 
 /**
- * Home and Profile live in one tab navigator: both stay mounted, so switching
- * is a quick shift instead of a full stack push. The common tab bar is drawn
- * once by the root layout (AppTabBar), so this navigator renders none.
+ * Home, Subscription and Profile live in one tab navigator: they stay mounted,
+ * so switching is a quick shift instead of a full stack push. The common tab
+ * bar (which also has Book Walk, a flow on top of the tabs) is drawn once by
+ * the root layout (AppTabBar), so this navigator renders none.
  */
 export default function TabsLayout() {
   const router = useRouter();

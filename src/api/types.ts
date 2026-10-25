@@ -125,9 +125,26 @@ export interface WalkEvent {
   note: string | null;
 }
 
+/** A walker's average over all rated walks (2 decimals). */
+export interface WalkerRating {
+  average: number;
+  count: number;
+}
+
+/**
+ * Who's walking, as the pet parent sees them: by name only, never a phone
+ * number or a location (DASHBOARD_API §5). Older servers sent `{ name, area }`,
+ * so everything but the name is optional.
+ */
 export interface Walker {
+  id?: string;
   name: string;
-  area: string;
+  /** "RD". */
+  initials?: string;
+  rating?: WalkerRating | null;
+  /** Trust tier ≥ 1. */
+  verified?: boolean;
+  area?: string;
 }
 
 export interface Booking {
@@ -162,20 +179,77 @@ export interface Booking {
   startedAt: number | null;
   completedAt: number | null;
   /**
-   * Who's walking: on GET /bookings/:id and the booking mutations once a walker
-   * is assigned (null if their profile is gone). GET /bookings leaves it out.
+   * Who's walking, once a walker is assigned (null if their profile is gone).
+   * Older servers left it out of GET /bookings.
    */
   walker?: Walker | null;
+  /** The walked distance, 2 decimals, once completed; null before (older servers leave it out). */
+  distanceKm?: number | null;
 }
+
+/** Express walks come in three lengths (DASHBOARD_API §1). */
+export type ExpressMinutes = 30 | 45 | 60;
+export const EXPRESS_MINUTES: readonly ExpressMinutes[] = [30, 45, 60];
 
 /** POST /bookings */
 export interface NewBooking {
   tier: WalkTier;
+  /** Express only (default 30); other tiers must leave it out. */
+  minutes?: ExpressMinutes;
   /** Epoch ms; omit for an express walk now. */
   scheduledFor?: number;
   dog: { name: string; breed: string; size: DogSize; temperament?: Temperament; notes?: string };
   pickup: Pickup;
   society?: SocietyAddress | null;
+}
+
+/** GET /pricing: what each walk costs at a moment, peak surcharge included. */
+export interface Pricing {
+  currency: 'INR';
+  /** The express prices include the peak-hour surcharge. */
+  peak: boolean;
+  /** ["07:00–09:00", "17:00–19:00"], India time. */
+  peakWindows: string[];
+  /** Ascending by length. */
+  express: { minutes: ExpressMinutes; price: number }[];
+  subscription: {
+    perWalk: number;
+    walks: number;
+    total: number;
+    minutes: number;
+    /** The daily times a pack can use (the server sends them; empty from older servers). */
+    slots: { slotMinute: number; label: string }[];
+  };
+  trial: { price: number; minutes: number };
+}
+
+/** GET /walkers/nearby: how many walkers could take a walk here (never who or where). */
+export interface NearbyWalkers {
+  /** Online, approved walkers whose radius covers the point. */
+  count: number;
+  /** Those cleared for the dog's temperament (all of `count` without one). */
+  eligible: number;
+  nearestKm: number | null;
+  /** A 15-minute window; null when nobody is eligible. */
+  arrival: { minMinutes: number; maxMinutes: number } | null;
+}
+
+export type WeatherCondition =
+  | 'clear'
+  | 'partly-cloudy'
+  | 'cloudy'
+  | 'fog'
+  | 'drizzle'
+  | 'rain'
+  | 'thunderstorm'
+  | 'snow';
+
+/** GET /weather (503 `weather_unavailable` when off or the provider is down). */
+export interface Weather {
+  tempC: number;
+  condition: WeatherCondition;
+  icon: string;
+  updatedAt: number;
 }
 
 /** POST /bookings/:id/payment */
@@ -185,20 +259,60 @@ export interface CheckoutSession {
   booking: Booking | null;
 }
 
+export type SubscriptionStatus = 'active' | 'cancelled' | 'finished';
+
+/** The pack's primary walker: set the first time a walker accepts one of its walks. */
+export interface PackWalker {
+  id: string;
+  name: string;
+  initials: string;
+  rating: WalkerRating | null;
+  verified: boolean;
+  /** Last 4 characters of the society gate pass, when verification has one. */
+  gatePass: string | null;
+}
+
+/** A second walker who covers the slot when the primary can't. */
+export interface PackBackup {
+  id: string;
+  name: string;
+  initials: string;
+}
+
+export interface PackNextWalk {
+  /** Null while the generator hasn't booked that day yet. */
+  bookingId: string | null;
+  scheduledFor: number;
+  /** "2026-10-26", India time. */
+  date: string;
+  /** A booking status, or "scheduled" before the walk is generated. */
+  status: BookingStatus | 'scheduled';
+  /** Only while the walk isn't started. */
+  pickupOtp: string | null;
+}
+
+/** GET /subscriptions: one monthly pack as the pet parent sees it (DASHBOARD_API §4). */
 export interface Subscription {
   id: string;
-  customerId: string;
-  status: 'active' | 'cancelled' | 'finished';
-  walksTotal: number;
-  walksBooked: number;
-  /** Minutes after midnight, India time. */
-  slotMinute: number;
+  status: SubscriptionStatus;
   dog: Dog;
   pickup: Pickup;
   society: SocietyAddress | null;
-  lastScheduledFor: number;
-  createdAt: number;
-  updatedAt: number;
+  walksTotal: number;
+  walksBooked: number;
+  walksDone: number | null;
+  /** walksTotal − walksBooked (skipped and cancelled walks are credited back). */
+  walksLeft: number | null;
+  /** Rupees. */
+  perWalk: number | null;
+  /** Minutes after midnight, India time. */
+  slotMinute: number;
+  /** "7:00 – 7:30 AM". */
+  slotLabel: string;
+  skipDates: string[];
+  nextWalk: PackNextWalk | null;
+  walker: PackWalker | null;
+  backup: PackBackup | null;
 }
 
 export interface Place {

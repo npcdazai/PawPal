@@ -1,9 +1,21 @@
-import React, { useEffect, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import React, { useEffect, useState, type ReactNode } from 'react';
+import { Animated, Easing, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useBookingList } from '../api/queries';
 import { colors, radii, shadows } from '../theme/colors';
-import { typography } from '../theme/typography';
 import { Icon } from '../components/Icon';
 import { NATIVE_DRIVER } from '../theme/motion';
+import { activeCoverInr } from './walkCover';
+
+/**
+ * The tracked walk's active cover, read from the server's copy of the booking
+ * (GET /bookings, refreshed while a walk is live). Null until the backend's
+ * doorstep check switches it on, and for walks the server doesn't know.
+ */
+export function useWalkCover(bookingId: string | null | undefined): number | null {
+  const { data } = useBookingList({ poll: true });
+  return activeCoverInr(bookingId ? data?.find((booking) => booking.id === bookingId) : undefined);
+}
 
 /** Green "live" dot that softly pulses. */
 export function PulsingDot({ color = colors.success, size = 10 }: { color?: string; size?: number }) {
@@ -40,18 +52,24 @@ export function PulsingDot({ color = colors.success, size = 10 }: { color?: stri
   );
 }
 
-/** Header for the live tracking screens: back, title, info. */
-export function TrackingTopBar({
-  title,
+/**
+ * The controls floating over a full-bleed tracking map (MAP_SHEET): back,
+ * the live status pill, info. They sit in the status-bar scrim at the top,
+ * so the rest of the map stays unobstructed.
+ */
+export function MapTopBar({
   onBack,
   onInfo,
+  children,
 }: {
-  title: string;
   onBack: () => void;
   onInfo: () => void;
+  /** The status pill between the two buttons. */
+  children: ReactNode;
 }) {
+  const { top } = useSafeAreaInsets();
   return (
-    <View style={styles.topBar}>
+    <View style={[styles.topBar, { top: top + 8 }]} pointerEvents="box-none">
       <Pressable
         onPress={onBack}
         accessibilityRole="button"
@@ -61,7 +79,9 @@ export function TrackingTopBar({
       >
         <Icon name="arrow-back" size={22} color={colors.ink} />
       </Pressable>
-      <Text style={styles.title}>{title}</Text>
+      <View style={styles.topCenter} pointerEvents="none">
+        {children}
+      </View>
       <Pressable
         onPress={onInfo}
         accessibilityRole="button"
@@ -112,14 +132,17 @@ export function RoundIconButton({
 
 const styles = StyleSheet.create({
   topBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 8,
     paddingHorizontal: 16,
-    paddingVertical: 8,
   },
-  title: {
-    ...typography.headline,
+  topCenter: {
+    flex: 1,
+    alignItems: 'center',
   },
   iconButton: {
     width: 42,

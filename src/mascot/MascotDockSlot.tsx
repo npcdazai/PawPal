@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useIsFocused } from 'expo-router';
 import { colors } from '../theme/colors';
+import { gradients } from '../theme/gradients';
 import { NATIVE_DRIVER } from '../theme/motion';
 import { useResponsive, type Responsive } from '../theme/responsive';
 import { CorgiSprite, GroundShadow, WoofPill } from './BarnabyMascot';
@@ -20,7 +21,8 @@ import { useMascotSlotHub, type SlotMotion } from './MascotProvider';
 export type MascotSlotVariant =
   | 'hero-circle' //    Splash
   | 'auth-header' //    Login, Register, Book a Walk
-  | 'dashboard-dock' // Dashboard banner
+  | 'dashboard-dock' // Plan screen banner
+  | 'compact-dock' //   Home greeting header: a glowing round stage
   | 'map-pin' //        Pickup, Walker En Route, Live Walk
   | 'pet-portrait' //   Profile pet card
   | 'popup'; //         dialogs (finding walkers, walk complete): not clipped
@@ -55,6 +57,21 @@ const VARIANTS: Record<Exclude<MascotSlotVariant, 'popup'>, VariantSpec> = {
     height: 76,
     frame: { borderRadius: 9999, backgroundColor: colors.card },
     fill: 0.92,
+    clip: true,
+  },
+  // 80 × 80 radial glow (white → peach) in a white ring, lifted off the glass header.
+  'compact-dock': {
+    width: 80,
+    height: 80,
+    frame: {
+      borderRadius: 9999,
+      backgroundImage: gradients.mascotGlow,
+      backgroundColor: colors.stage,
+      borderWidth: 3,
+      borderColor: colors.card,
+      boxShadow: '0px 6px 16px rgba(24, 26, 32, 0.10)',
+    },
+    fill: 0.98,
     clip: true,
   },
   'map-pin': {

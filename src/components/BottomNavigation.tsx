@@ -1,23 +1,25 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, View, type GestureResponderEvent } from 'react-native';
+import { Animated, Easing, Platform, Pressable, StyleSheet, View, type GestureResponderEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
-import { colors, radii, shadows } from '../theme/colors';
+import { colors, radii } from '../theme/colors';
 import { fonts } from '../theme/typography';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { NATIVE_DRIVER, type ViewHandle } from '../theme/motion';
 import { Icon } from './Icon';
 
-/** Height of the floating bar, for content padding underneath it. */
-export const BOTTOM_NAV_HEIGHT = 68;
-/** The bar floats this far above the screen edge, or above the system navigation bar when that is taller. */
-const BOTTOM_NAV_GAP = 12;
+/** Height of the bar's tab row, above the bottom safe area. */
+export const BOTTOM_NAV_HEIGHT = 64;
+/** The tab row keeps at least this much room under it on phones without a gesture bar. */
+const BOTTOM_NAV_PAD = 6;
 
 /** Distance from the screen's bottom edge to the top of the bar, for a scroll view's bottom padding. */
-export const bottomNavClearance = (bottomInset: number) =>
-  Math.max(bottomInset, BOTTOM_NAV_GAP) + BOTTOM_NAV_HEIGHT;
+export const bottomNavClearance = (bottomInset: number) => Math.max(bottomInset, BOTTOM_NAV_PAD) + BOTTOM_NAV_HEIGHT;
 
-const BAR_PADDING = 6;
+/** Frosted white: the screen's sky shows faintly through. */
+const BAR_FILL = 'rgba(255, 255, 255, 0.95)';
+const INDICATOR_WIDTH = 28;
 /** Horizontal drag distance before a touch becomes a scrub across the tabs. */
 const SCRUB_SLOP = 8;
 /** Grace period so hover/press can glide between neighbouring tabs. */
@@ -39,6 +41,11 @@ interface BottomNavigationProps<K extends string> {
   tabs: readonly BottomNavigationTab<K>[];
   current: K;
   onChange: (tab: K) => void;
+  /**
+   * Tabs that become the highlighted one when tapped. Others (a tab that opens
+   * a flow on top, like Book Walk) just act. Default: every tab.
+   */
+  selectable?: (tab: K) => boolean;
   /** Selection ticks while tapping and scrubbing. */
   haptics?: boolean;
 }
@@ -47,10 +54,13 @@ const tick = () => {
   Haptics.selectionAsync().catch(() => undefined);
 };
 
+const always = () => true;
+
 /**
- * Floating tab bar with a sliding Primary Blue pill.
- *  - the pill springs between tabs with a little squash-and-stretch
- *  - a soft "ghost" pill slides under whatever is hovered (web / pointer) or pressed
+ * The docked, frosted-white tab bar (icon over label; the active tab in
+ * Primary Blue with a short indicator above it).
+ *  - the indicator springs between tabs with a little squash-and-stretch
+ *  - a soft ghost slides under whatever is hovered (web / pointer) or pressed
  *  - dragging a finger along the bar scrubs the ghost across tabs; release selects
  *  - icons pop and lift, colours crossfade, tabs stagger in on mount
  */
@@ -58,6 +68,7 @@ export function BottomNavigation<K extends string>({
   tabs,
   current,
   onChange,
+  selectable = always,
   haptics = true,
 }: BottomNavigationProps<K>) {
   const insets = useSafeAreaInsets();
@@ -72,9 +83,8 @@ export function BottomNavigation<K extends string>({
   const tabWidth = trackWidth / tabs.length;
 
   const [anim] = useState(() => ({
-    pillX: new Animated.Value(0),
+    indicatorX: new Animated.Value(0),
     stretch: new Animated.Value(0),
-    pillPress: new Animated.Value(1),
     ghostX: new Animated.Value(0),
     ghostOpacity: new Animated.Value(0),
   }));
@@ -88,7 +98,7 @@ export function BottomNavigation<K extends string>({
     pendingTimer: null as ReturnType<typeof setTimeout> | null,
   });
 
-  // Slide the active pill whenever the selection changes.
+  // Slide the indicator whenever the selection changes.
   useEffect(() => {
     if (!tabWidth) return;
     const target = activeIndex * tabWidth;
@@ -97,19 +107,15 @@ export function BottomNavigation<K extends string>({
     state.lastIndex = activeIndex;
 
     if (!moved) {
-      anim.pillX.setValue(target);
+      anim.indicatorX.setValue(target);
       return;
     }
     if (reduceMotion) {
-      Animated.timing(anim.pillX, {
-        toValue: target,
-        duration: 140,
-        useNativeDriver: NATIVE_DRIVER,
-      }).start();
+      Animated.timing(anim.indicatorX, { toValue: target, duration: 140, useNativeDriver: NATIVE_DRIVER }).start();
       return;
     }
     Animated.parallel([
-      Animated.spring(anim.pillX, { toValue: target, ...SLIDE, useNativeDriver: NATIVE_DRIVER }),
+      Animated.spring(anim.indicatorX, { toValue: target, ...SLIDE, useNativeDriver: NATIVE_DRIVER }),
       Animated.sequence([
         Animated.timing(anim.stretch, {
           toValue: 1,
@@ -130,12 +136,10 @@ export function BottomNavigation<K extends string>({
     };
   }, []);
 
-  const pillTransform = useMemo(
+  const indicatorTransform = useMemo(
     () => [
-      { translateX: anim.pillX },
-      { scaleX: anim.stretch.interpolate({ inputRange: [0, 1], outputRange: [1, 1.22] }) },
-      { scaleY: anim.stretch.interpolate({ inputRange: [0, 1], outputRange: [1, 0.9] }) },
-      { scale: anim.pillPress },
+      { translateX: anim.indicatorX },
+      { scaleX: anim.stretch.interpolate({ inputRange: [0, 1], outputRange: [1, 1.6] }) },
     ],
     [anim]
   );
@@ -164,27 +168,15 @@ export function BottomNavigation<K extends string>({
     state.hideTimer = setTimeout(() => {
       state.hideTimer = null;
       state.ghostIndex = -1;
-      Animated.timing(anim.ghostOpacity, {
-        toValue: 0,
-        duration: 180,
-        useNativeDriver: NATIVE_DRIVER,
-      }).start();
+      Animated.timing(anim.ghostOpacity, { toValue: 0, duration: 180, useNativeDriver: NATIVE_DRIVER }).start();
     }, GHOST_LINGER_MS);
-  };
-
-  const pressPill = (down: boolean) => {
-    Animated.spring(anim.pillPress, {
-      toValue: down ? 0.94 : 1,
-      ...PRESS,
-      useNativeDriver: NATIVE_DRIVER,
-    }).start();
   };
 
   const select = (index: number) => {
     const tab = tabs[index];
     if (!tab) return;
     if (haptics) tick();
-    if (tab.key !== shown) {
+    if (tab.key !== shown && selectable(tab.key)) {
       const state = gesture.current;
       setPending({ key: tab.key, from: current });
       if (state.pendingTimer) clearTimeout(state.pendingTimer);
@@ -199,7 +191,14 @@ export function BottomNavigation<K extends string>({
   };
 
   return (
-    <View role="tablist" style={[styles.bar, { bottom: Math.max(insets.bottom, BOTTOM_NAV_GAP) }]}>
+    <View role="tablist" style={[styles.bar, { paddingBottom: Math.max(insets.bottom, BOTTOM_NAV_PAD) }]}>
+      {/*
+        Frosted glass: a real blur on iOS and web. Android would need a BlurTargetView around the
+        screens (expo-blur SDK 58), so there it stays the 95% white fill.
+      */}
+      {Platform.OS === 'android' ? null : (
+        <BlurView pointerEvents="none" intensity={40} tint="light" style={StyleSheet.absoluteFill} />
+      )}
       <View
         ref={trackRef}
         style={styles.track}
@@ -247,16 +246,12 @@ export function BottomNavigation<K extends string>({
               pointerEvents="none"
               style={[
                 styles.ghost,
-                {
-                  width: tabWidth,
-                  opacity: anim.ghostOpacity,
-                  transform: [{ translateX: anim.ghostX }],
-                },
+                { width: tabWidth - 12, opacity: anim.ghostOpacity, transform: [{ translateX: anim.ghostX }] },
               ]}
             />
             <Animated.View
               pointerEvents="none"
-              style={[styles.pill, { width: tabWidth, transform: pillTransform }]}
+              style={[styles.indicator, { left: (tabWidth - INDICATOR_WIDTH) / 2, transform: indicatorTransform }]}
             />
           </>
         ) : null}
@@ -268,18 +263,14 @@ export function BottomNavigation<K extends string>({
             icon={tab.icon}
             index={index}
             active={index === activeIndex}
-            pillX={anim.pillX}
+            indicatorX={anim.indicatorX}
             tabWidth={tabWidth}
             reduceMotion={reduceMotion}
             onPress={() => select(index)}
             onPressIn={() => {
-              if (index === activeIndex) pressPill(true);
-              else showGhost(index);
+              if (index !== activeIndex) showGhost(index);
             }}
-            onPressOut={() => {
-              pressPill(false);
-              hideGhost();
-            }}
+            onPressOut={hideGhost}
             onHoverIn={() => showGhost(index)}
             onHoverOut={hideGhost}
           />
@@ -294,8 +285,8 @@ interface TabButtonProps {
   icon: string;
   index: number;
   active: boolean;
-  /** The sliding pill's offset: icon and label colours follow it as it passes. */
-  pillX: Animated.Value;
+  /** The sliding indicator's offset: icon and label colours follow it as it passes. */
+  indicatorX: Animated.Value;
   tabWidth: number;
   reduceMotion: boolean;
   onPress: () => void;
@@ -310,7 +301,7 @@ function TabButton({
   icon,
   index,
   active,
-  pillX,
+  indicatorX,
   tabWidth,
   reduceMotion,
   onPress,
@@ -349,24 +340,23 @@ function TabButton({
   }, [enter, index, reduceMotion]);
 
   const styleAnim = useMemo(() => {
-    // Once laid out, colours track how much of the pill sits under this tab,
-    // so white text never appears before the blue pill arrives.
+    // Once laid out, colours track how close the indicator is to this tab.
     const coverage =
       tabWidth > 0
-        ? pillX.interpolate({
+        ? indicatorX.interpolate({
             inputRange: [(index - 1) * tabWidth, index * tabWidth, (index + 1) * tabWidth],
             outputRange: [0, 1, 0],
             extrapolate: 'clamp',
           })
         : focus.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' });
     return {
-      iconScale: focus.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] }),
+      iconScale: focus.interpolate({ inputRange: [0, 1], outputRange: [1, 1.1] }),
       iconLift: focus.interpolate({ inputRange: [0, 1], outputRange: [0, -1.5] }),
       activeOpacity: coverage,
       idleOpacity: coverage.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
       enterY: enter.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }),
     };
-  }, [focus, enter, pillX, tabWidth, index]);
+  }, [focus, enter, indicatorX, tabWidth, index]);
 
   const springPress = (toValue: number) => {
     Animated.spring(press, { toValue, ...PRESS, useNativeDriver: NATIVE_DRIVER }).start();
@@ -380,7 +370,7 @@ function TabButton({
       style={styles.tab}
       onPress={onPress}
       onPressIn={() => {
-        if (!reduceMotion) springPress(0.86);
+        if (!reduceMotion) springPress(0.88);
         onPressIn();
       }}
       onPressOut={() => {
@@ -391,25 +381,16 @@ function TabButton({
       onHoverOut={onHoverOut}
     >
       <Animated.View
-        style={[
-          styles.tabInner,
-          {
-            opacity: enter,
-            transform: [{ translateY: styleAnim.enterY }, { scale: press }],
-          },
-        ]}
+        style={[styles.tabInner, { opacity: enter, transform: [{ translateY: styleAnim.enterY }, { scale: press }] }]}
       >
         <Animated.View
-          style={[
-            styles.iconBox,
-            { transform: [{ translateY: styleAnim.iconLift }, { scale: styleAnim.iconScale }] },
-          ]}
+          style={[styles.iconBox, { transform: [{ translateY: styleAnim.iconLift }, { scale: styleAnim.iconScale }] }]}
         >
           <Animated.View style={{ opacity: styleAnim.idleOpacity }}>
-            <Icon name={icon} size={22} color={colors.slate} />
+            <Icon name={icon} size={24} color={colors.slate} />
           </Animated.View>
           <Animated.View style={[styles.layer, { opacity: styleAnim.activeOpacity }]}>
-            <Icon name={icon} size={22} color={colors.onPrimary} />
+            <Icon name={icon} size={24} color={colors.primary} />
           </Animated.View>
         </Animated.View>
         <View style={styles.labelBox}>
@@ -438,33 +419,34 @@ function TabButton({
 const styles = StyleSheet.create({
   bar: {
     position: 'absolute',
-    left: 16,
-    right: 16,
-    height: BOTTOM_NAV_HEIGHT,
-    padding: BAR_PADDING,
-    borderRadius: radii.full,
-    backgroundColor: colors.card,
-    ...shadows.float,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 8,
+    backgroundColor: BAR_FILL,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(24, 26, 32, 0.06)',
+    boxShadow: '0px -10px 32px rgba(41, 98, 255, 0.08)',
   },
   track: {
-    flex: 1,
+    height: BOTTOM_NAV_HEIGHT,
     flexDirection: 'row',
   },
-  pill: {
+  indicator: {
     position: 'absolute',
-    left: 0,
     top: 0,
-    bottom: 0,
-    borderRadius: radii.full,
+    width: INDICATOR_WIDTH,
+    height: 3,
+    borderBottomLeftRadius: 3,
+    borderBottomRightRadius: 3,
     backgroundColor: colors.primary,
-    ...shadows.primary,
   },
   ghost: {
     position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    borderRadius: radii.full,
+    left: 6,
+    top: 6,
+    bottom: 6,
+    borderRadius: radii.md,
     backgroundColor: colors.primaryTint,
   },
   tab: {
@@ -472,13 +454,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Full tab width, so the bold active label never truncates over the regular one.
   tabInner: {
+    alignSelf: 'stretch',
     alignItems: 'center',
     gap: 3,
   },
   iconBox: {
-    width: 24,
-    height: 24,
+    width: 26,
+    height: 26,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -491,15 +475,16 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   label: {
-    fontFamily: fonts.bold,
-    fontSize: 11,
-    lineHeight: 14,
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    lineHeight: 15,
     textAlign: 'center',
     color: colors.slate,
     // Scrubbing with a mouse on web must not select label text.
     userSelect: 'none',
   },
   labelActive: {
-    color: colors.onPrimary,
+    fontFamily: fonts.bold,
+    color: colors.primary,
   },
 });

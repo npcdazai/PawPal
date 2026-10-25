@@ -1,20 +1,28 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
+import { errorMessage } from '../api/errors';
+import { useBookingList, useCreateBooking, useNearbyWalkers, usePricing } from '../api/queries';
+import type { Booking as ApiBooking, ExpressMinutes, Pricing } from '../api/types';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
 import { useResponsive } from '../theme/responsive';
+import { gradients } from '../theme/gradients';
 import { Icon } from '../components/Icon';
 import { Avatar } from '../components/Avatar';
 import { PrimaryButton } from '../components/Button';
+import { PawsomeGradientScreen } from '../components/PawsomeGradientScreen';
 import { Toast, useToast } from '../components/Toast';
 import { MascotDockSlot } from '../mascot/MascotDockSlot';
 import { useMascotActions } from '../mascot/MascotProvider';
 import { useAppNavigation } from '../navigation/useAppNavigation';
 import { useBookings, usePastWalks, type SocietyProfile } from '../booking/BookingsProvider';
-import { PICKUP_OTP } from '../booking/liveWalk';
+import { amountDue, bookingRequest, needsPayment } from '../booking/bookingRequest';
+import { dogForBooking } from '../booking/dogProfile';
+import { arrivalLine, expressChoice } from '../booking/homeModel';
+import { clearPlanIntent, peekPlanIntent, planIntentFromParams } from '../booking/planIntent';
 import {
   SOCIETIES,
   stackedSchedule,
@@ -26,9 +34,6 @@ import {
 import {
   BATCHES,
   EXPRESS_ETA,
-  EXPRESS_PEAK_PRICE,
-  EXPRESS_PRICE,
-  INSURANCE_COVER,
   SUBSCRIPTION_MONTHLY,
   SUBSCRIPTION_PER_WALK,
   SUBSCRIPTION_WALKS,
@@ -37,15 +42,15 @@ import {
   TRIAL_PRICE,
   clockLabel,
   formatMoney,
-  isPeakHour,
   minuteOfDay,
   slotRange,
-  tierFare,
   type Batch,
+  type WalkMinutes,
   type WalkTier,
 } from '../booking/walkPlans';
 import { WALKERS, isWalkerId, type WalkerId } from '../data/careTeam';
 import { UpiPaymentSheet } from '../payments/UpiPaymentSheet';
+import type { UpiReceipt } from '../payments/useUpiPayment';
 
 const FOOTER_HEIGHT = 136;
 /** The walker finishing the slot before Barnaby's is a lobby away. */
@@ -57,17 +62,38 @@ export function WalkPlanScreen() {
   const { go } = useAppNavigation();
   if (!societyProfile) {
     return (
-      <SafeAreaView style={[styles.safe, styles.empty]}>
+      <PawsomeGradientScreen variant="CROWN" edges={['top', 'bottom']} style={styles.empty}>
         <Text style={styles.cardTitle}>Set up Barnaby’s society profile first</Text>
         <Text style={[styles.meta, styles.centerText]}>
           Plans and slots depend on your township and Barnaby’s handling needs.
         </Text>
         <PrimaryButton label="Society & Behavioral Profile" onPress={() => go('backToSociety')} style={styles.stretch} />
-      </SafeAreaView>
+      </PawsomeGradientScreen>
     );
   }
   return <WalkPlan profile={societyProfile} />;
 }
+
+/** Express lengths the plan screen offers before /pricing answers (prices then come from it). */
+const EXPRESS_LENGTHS: readonly ExpressMinutes[] = [30, 45, 60];
+
+/** The payment sheet's line for a server-priced booking. */
+function fareLines(booking: ApiBooking, pricing: Pricing | undefined) {
+  const amount = amountDue(booking);
+  switch (booking.tier) {
+    case 'subscription': {
+      const walks = pricing?.subscription.walks ?? SUBSCRIPTION_WALKS;
+      return [{ label: `${walks} society walks × ${formatMoney(booking.price)}`, amount }];
+    }
+    case 'trial':
+      return [{ label: `${booking.minutes}-min Meet & Greet co-walk`, amount }];
+    case 'express':
+      return [{ label: `Express walk (${booking.minutes} min)${pricing?.peak ? ' · peak hours' : ''}`, amount }];
+  }
+}
+
+const walkMinutes = (minutes: number, tier: WalkTier): WalkMinutes =>
+  minutes === 15 || minutes === 30 || minutes === 45 || minutes === 60 ? minutes : TIER_MINUTES[tier];
 
 function WalkPlan({ profile }: { profile: SocietyProfile }) {
   const insets = useSafeAreaInsets();
@@ -76,8 +102,12 @@ function WalkPlan({ profile }: { profile: SocietyProfile }) {
   const { glance, barkWith } = useMascotActions();
   const { addBooking } = useBookings();
   const pastWalks = usePastWalks();
-  const params = useLocalSearchParams<{ walker?: string }>();
+  const params = useLocalSearchParams<{ walker?: string; tier?: string; minutes?: string }>();
   const { message, show } = useToast();
+  const pricingQuery = usePricing();
+  const pricing = pricingQuery.data;
+  const { data: serverBookings } = useBookingList();
+  const create = useCreateBooking();
 
   const society = SOCIETIES[profile.society];
   const reactive = profile.temperament === 'reactive';
@@ -87,20 +117,33 @@ function WalkPlan({ profile }: { profile: SocietyProfile }) {
   const pastWalkers = [
     ...new Set(pastWalks.filter((walk) => walk.society === society.key).map((walk) => walk.walkerId)),
   ];
+  const [lobbyLng, lobbyLat] = towerLobby(society, profile.tower);
+  const nearby = useNearbyWalkers({ lat: lobbyLat, lng: lobbyLng }, profile.temperament).data;
 
-  const [tier, setTier] = useState<WalkTier>(() => (reactive ? 'trial' : 'subscription'));
+  // A home-screen card can pick the plan: from the route, or held through the society screen.
+  const [intent] = useState(() => planIntentFromParams(params) ?? peekPlanIntent());
+  useEffect(() => clearPlanIntent(), []);
+
+  const [tier, setTier] = useState<WalkTier>(() => intent?.tier ?? (reactive ? 'trial' : 'subscription'));
+  const [minutes, setMinutes] = useState<ExpressMinutes>(() => intent?.minutes ?? 30);
   const [batch, setBatch] = useState<Batch>(() => (minuteOfDay() >= BATCHES.morning.to ? 'evening' : 'morning'));
   const [slotStart, setSlotStart] = useState<number | null>(() => suggestedSlot(society, batch));
   const [repeatWalker, setRepeatWalker] = useState<WalkerId | null>(() =>
     isWalkerId(params.walker) && pastWalkers.includes(params.walker) ? params.walker : null
   );
-  const [paying, setPaying] = useState(false);
+  /** The server booking waiting for its payment. */
+  const [paying, setPaying] = useState<ApiBooking | null>(null);
 
   // Safety Lock: no first-time Express for a reactive dog without a walker he knows.
   const safetyLock = tier === 'express' && reactive && pastWalks.length === 0 && !repeatWalker;
-  const fare = tierFare(tier);
   const schedule = stackedSchedule(society, batch);
-  const expressPeak = isPeakHour();
+  // Prices shown before checkout: the server's /pricing (the plan constants only until it answers).
+  const perWalk = pricing?.subscription.perWalk ?? SUBSCRIPTION_PER_WALK;
+  const monthly = pricing?.subscription.total ?? SUBSCRIPTION_MONTHLY;
+  const packWalks = pricing?.subscription.walks ?? SUBSCRIPTION_WALKS;
+  const trialPrice = pricing?.trial.price ?? TRIAL_PRICE;
+  const express = pricing ? expressChoice(pricing, minutes) : null;
+  const arrival = arrivalLine(nearby);
 
   const primary: WalkerId = repeatWalker ?? society.primaryWalker;
   const backup: WalkerId = primary === society.backupWalker ? society.primaryWalker : society.backupWalker;
@@ -108,6 +151,12 @@ function WalkPlan({ profile }: { profile: SocietyProfile }) {
   const chooseTier = (next: WalkTier) => {
     if (next === tier) return;
     setTier(next);
+    glance();
+  };
+
+  const chooseMinutes = (next: ExpressMinutes) => {
+    if (next === minutes) return;
+    setMinutes(next);
     glance();
   };
 
@@ -123,30 +172,77 @@ function WalkPlan({ profile }: { profile: SocietyProfile }) {
     glance();
   };
 
+  /** Booked (and paid, when the server asks for it): carry on to the walker. */
+  const finish = (booking: ApiBooking, receipt: UpiReceipt | null) => {
+    const isExpress = booking.tier === 'express';
+    const start = isExpress ? minuteOfDay(new Date(booking.scheduledFor)) : (slotStart ?? 0);
+    const origin = walkerOrigin(society, isExpress ? null : batch, start);
+    const etaMinutes = isExpress ? (nearby?.arrival?.minMinutes ?? EXPRESS_ETA.min) : STACKED_ETA_MIN;
+    addBooking({
+      bookingId: booking.id,
+      status: 'enRoute',
+      tier: booking.tier,
+      minutes: walkMinutes(booking.minutes, booking.tier),
+      total: amountDue(booking),
+      payment: receipt,
+      society: society.key,
+      tower: profile.tower,
+      flat: profile.flat,
+      pickup: towerLobby(society, profile.tower),
+      walkerFrom: origin.at,
+      walkerFromTower: origin.tower,
+      batch: isExpress ? null : batch,
+      slotStart: start,
+      slotLabel: isExpress
+        ? `Express ${booking.minutes}-min walk${arrival ? ` • ${arrival.toLowerCase()}` : ''}`
+        : `${slotRange(start, booking.minutes)} • ${booking.tier === 'trial' ? 'Meet & Greet' : 'Daily'}`,
+      whenLabel: `Arriving in ${etaMinutes} mins`,
+      walkerId: primary,
+      backupWalkerId: backup,
+      // The server's doorstep code for this walk.
+      otp: booking.pickupOtp,
+      etaMinutes,
+    });
+    setPaying(null);
+    barkWith('Woof! Slot locked 🐾');
+    go('trackWalker', { id: booking.id });
+  };
+
   const confirm = () => {
+    if (create.isPending) return;
     if (safetyLock) {
       glance();
-      show('⚠️ Safety Lock: switch to the ₹99 Trial or pick a walker Barnaby knows');
+      show(`⚠️ Safety Lock: switch to the ${formatMoney(trialPrice)} Trial or pick a walker Barnaby knows`);
       return;
     }
     if (tier !== 'express' && slotStart === null) {
       show('Pick a 30-minute slot first');
       return;
     }
-    setPaying(true);
+    const latest = serverBookings?.reduce<ApiBooking | null>(
+      (newest, booking) => (!newest || booking.createdAt > newest.createdAt ? booking : newest),
+      null
+    );
+    // The server prices the walk; it answers `awaiting_payment` when it wants paying first.
+    create.mutate(bookingRequest({ profile, dog: dogForBooking(latest?.dog), tier, minutes, slotStart }), {
+      onSuccess: (booking) => (needsPayment(booking) ? setPaying(booking) : finish(booking, null)),
+      onError: (error) => show(errorMessage(error)),
+    });
   };
 
   const summary =
     tier === 'express'
-      ? `SOS Express • within ${EXPRESS_ETA.min}–${EXPRESS_ETA.max} mins • ${society.shortName}`
+      ? `Express ${minutes} min${express ? ` • ${formatMoney(express.price)}` : ''}${
+          arrival ? ` • ${arrival.toLowerCase()}` : ''
+        } • ${society.shortName}`
       : slotStart !== null
         ? `${clockLabel(slotStart)} ${tier === 'trial' ? 'Meet & Greet' : 'Daily Batch'} • ${
-            tier === 'trial' ? formatMoney(TRIAL_PRICE) : `${formatMoney(SUBSCRIPTION_PER_WALK)}/walk`
+            tier === 'trial' ? formatMoney(trialPrice) : `${formatMoney(perWalk)}/walk`
           } • ${society.shortName}`
         : `Pick a slot • ${society.shortName}`;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <PawsomeGradientScreen variant="CROWN">
       <View style={[styles.topBar, compact && styles.topBarCompact]}>
         <Pressable
           onPress={() => go('backToSociety')}
@@ -201,13 +297,13 @@ function WalkPlan({ profile }: { profile: SocietyProfile }) {
             { label: '✓ Guaranteed Backup Walker', tone: 'amber' },
           ]}
           title={TIER_TITLES.subscription}
-          price={formatMoney(SUBSCRIPTION_PER_WALK)}
+          price={formatMoney(perWalk)}
           unit="/ walk"
-          note={`(${formatMoney(SUBSCRIPTION_MONTHLY)}/mo • ${SUBSCRIPTION_WALKS} Morning/Evening Walks)`}
+          note={`(${formatMoney(monthly)}/mo • ${packWalks} Morning/Evening Walks)`}
           bullets={[
             { icon: 'schedule', text: 'Zero travel delay • fixed daily 30-min slot inside your township' },
-            { icon: 'groups', text: 'Assigned society walker + 100% guaranteed auto-backup if they’re on leave' },
-            { icon: 'health-and-safety', text: `${formatMoney(INSURANCE_COVER)} active-walk vet insurance included` },
+            { icon: 'groups', text: 'Assigned society walker + automatic backup walker if they’re on leave' },
+            { icon: 'health-and-safety', text: 'Vet & accident cover switches on at the doorstep OTP check' },
           ]}
         />
         <TierCard
@@ -221,19 +317,22 @@ function WalkPlan({ profile }: { profile: SocietyProfile }) {
               : []),
           ]}
           title={TIER_TITLES.trial}
-          price={formatMoney(TRIAL_PRICE)}
+          price={formatMoney(trialPrice)}
           unit="(One-time)"
           description="15-min co-walk with you + your assigned society walker inside the complex gate, to build trust and check harness & temperament."
         />
         <TierCard
           selected={tier === 'express'}
           onPress={() => chooseTier('express')}
-          tags={[{ label: '🚨 Urgent On-Demand', tone: 'red' }]}
-          title="SOS Express Walk"
-          price={formatMoney(expressPeak ? EXPRESS_PEAK_PRICE : EXPRESS_PRICE)}
+          tags={[
+            { label: '⚡ Instant / Express', tone: 'red' },
+            ...(pricing?.peak ? [{ label: 'Peak-hour price', tone: 'amber' as const }] : []),
+          ]}
+          title="Instant / Express Walk"
+          price={express ? formatMoney(express.price) : '…'}
           priceTone="coral"
-          unit="/ single walk"
-          description={`Walker arrives within ${EXPRESS_ETA.min}–${EXPRESS_ETA.max} mins from your society’s batch. Only for Friendly/Low-Pull dogs or walkers Barnaby already knows.`}
+          unit={`/ ${minutes} min walk`}
+          description="A verified walker already inside your society, for 30, 45 or 60 minutes. Only for Friendly/Low-Pull dogs or walkers Barnaby already knows."
         />
 
         {safetyLock ? (
@@ -248,7 +347,7 @@ function WalkPlan({ profile }: { profile: SocietyProfile }) {
               accessibilityRole="button"
               style={({ pressed }) => [styles.lockButton, pressed && styles.pressed]}
             >
-              <Text style={styles.lockButtonText}>Switch to {formatMoney(TRIAL_PRICE)} Trial Walk</Text>
+              <Text style={styles.lockButtonText}>Switch to {formatMoney(trialPrice)} Trial Walk</Text>
             </Pressable>
             {pastWalkers.length ? (
               <View style={styles.walkerChips}>
@@ -264,14 +363,47 @@ function WalkPlan({ profile }: { profile: SocietyProfile }) {
 
         {tier === 'express' && !safetyLock ? (
           <View style={styles.express}>
-            <Icon name="bolt" size={22} color={colors.coral} />
-            <View style={styles.flex}>
-              <Text style={styles.cardTitle}>Arrives within {EXPRESS_ETA.min}–{EXPRESS_ETA.max} mins</Text>
-              <Text style={styles.meta}>
-                Squeezed between {society.shortName}’s stacked slots by a walker already inside the complex.
-                {repeatWalker ? ` Repeat walker: ${WALKERS[repeatWalker].name}.` : ''}
-              </Text>
+            <View style={styles.expressHead}>
+              <Icon name="bolt" size={22} color={colors.coral} />
+              <View style={styles.flex}>
+                <Text style={styles.cardTitle}>{arrival ?? 'Arrival confirmed when a walker accepts'}</Text>
+                <Text style={styles.meta}>
+                  Squeezed between {society.shortName}’s stacked slots by a walker already inside the complex.
+                  {repeatWalker ? ` Repeat walker: ${WALKERS[repeatWalker].name}.` : ''}
+                </Text>
+              </View>
             </View>
+            <Text style={styles.overline}>SELECT DURATION</Text>
+            <View style={styles.durationRow} role="radiogroup">
+              {(pricing?.express ?? EXPRESS_LENGTHS.map((length) => ({ minutes: length, price: null }))).map((option) => {
+                const selected = option.minutes === (express?.minutes ?? minutes);
+                return (
+                  <Pressable
+                    key={option.minutes}
+                    onPress={() => chooseMinutes(option.minutes)}
+                    role="radio"
+                    aria-checked={selected}
+                    style={({ pressed }) => [styles.duration, selected && styles.durationSelected, pressed && styles.pressed]}
+                  >
+                    <Text style={[styles.durationText, selected && styles.durationTextSelected]}>
+                      {option.minutes} Mins
+                    </Text>
+                    <Text style={[styles.durationPrice, selected && styles.durationTextSelected]}>
+                      {option.price !== null ? formatMoney(option.price) : '…'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {pricingQuery.isError && !pricing ? (
+              <Pressable onPress={() => void pricingQuery.refetch()} accessibilityRole="button" hitSlop={6}>
+                <Text style={styles.retryText}>Couldn’t load today’s prices. Tap to retry.</Text>
+              </Pressable>
+            ) : pricing?.peak ? (
+              <Text style={styles.meta}>
+                Peak-hour prices{pricing.peakWindows.length ? ` (${pricing.peakWindows.join(', ')})` : ''}.
+              </Text>
+            ) : null}
           </View>
         ) : null}
 
@@ -306,8 +438,9 @@ function WalkPlan({ profile }: { profile: SocietyProfile }) {
           </Text>
         </View>
         <PrimaryButton
-          label="Confirm Slot & View Walker"
+          label={create.isPending ? 'Booking…' : 'Confirm Slot & View Walker'}
           onPress={confirm}
+          disabled={create.isPending}
           style={safetyLock ? styles.ctaLocked : undefined}
         />
       </View>
@@ -316,53 +449,28 @@ function WalkPlan({ profile }: { profile: SocietyProfile }) {
 
       {paying ? (
         <UpiPaymentSheet
-          title={tier === 'subscription' ? `Subscribe: ${society.shortName} walks` : `Pay for Barnaby’s ${TIER_MINUTES[tier]}-min walk`}
-          lines={fare.lines}
-          total={fare.total}
-          description={`PawPal ${TIER_TITLES[tier]} • ${society.shortName}`}
+          title={
+            paying.tier === 'subscription'
+              ? `Subscribe: ${society.shortName} walks`
+              : `Pay for Barnaby’s ${paying.minutes}-min walk`
+          }
+          lines={fareLines(paying, pricing)}
+          total={amountDue(paying)}
+          description={`PawPal ${TIER_TITLES[paying.tier]} • ${society.shortName}`}
           metadata={{
-            tier,
+            bookingId: paying.id,
+            tier: paying.tier,
+            minutes: String(paying.minutes),
             society: society.key,
             tower: profile.tower,
             flat: profile.flat,
-            slot: tier === 'express' ? 'express' : String(slotStart),
+            slot: paying.tier === 'express' ? 'express' : String(slotStart),
           }}
-          onPaid={(receipt) => {
-            const express = tier === 'express';
-            const start = express ? Math.ceil((minuteOfDay() + EXPRESS_ETA.min) / 5) * 5 : (slotStart ?? 0);
-            const origin = walkerOrigin(society, express ? null : batch, start);
-            const etaMinutes = express ? EXPRESS_ETA.min : STACKED_ETA_MIN;
-            addBooking({
-              status: 'enRoute',
-              tier,
-              minutes: TIER_MINUTES[tier],
-              total: fare.total,
-              payment: receipt,
-              society: society.key,
-              tower: profile.tower,
-              flat: profile.flat,
-              pickup: towerLobby(society, profile.tower),
-              walkerFrom: origin.at,
-              walkerFromTower: origin.tower,
-              batch: express ? null : batch,
-              slotStart: start,
-              slotLabel: express
-                ? `SOS Express • within ${EXPRESS_ETA.min}–${EXPRESS_ETA.max} mins`
-                : `${slotRange(start, TIER_MINUTES[tier])} • ${tier === 'trial' ? 'Meet & Greet' : 'Daily'}`,
-              whenLabel: `Arriving in ${etaMinutes} mins`,
-              walkerId: primary,
-              backupWalkerId: backup,
-              otp: PICKUP_OTP,
-              etaMinutes,
-            });
-            setPaying(false);
-            barkWith('Woof! Slot locked 🐾');
-            go('trackWalker');
-          }}
-          onClose={() => setPaying(false)}
+          onPaid={(receipt) => finish(paying, receipt)}
+          onClose={() => setPaying(null)}
         />
       ) : null}
-    </SafeAreaView>
+    </PawsomeGradientScreen>
   );
 }
 
@@ -586,10 +694,6 @@ function WalkerChip({ id, selected, onPress }: { id: WalkerId; selected: boolean
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.canvas,
-  },
   flex: {
     flex: 1,
   },
@@ -860,11 +964,55 @@ const styles = StyleSheet.create({
     color: colors.ink,
   },
   express: {
-    flexDirection: 'row',
     gap: 12,
     padding: 16,
     borderRadius: radii.lg,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 107, 74, 0.35)',
+    backgroundImage: gradients.expressCard,
     backgroundColor: colors.coralTint,
+  },
+  expressHead: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  durationRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  duration: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: 9,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
+    backgroundColor: colors.card,
+  },
+  durationSelected: {
+    borderWidth: 1.5,
+    borderColor: colors.coral,
+    backgroundImage: gradients.peachChip,
+  },
+  durationText: {
+    fontFamily: fonts.semibold,
+    fontSize: 12.5,
+    color: '#3F3F46',
+  },
+  durationPrice: {
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    color: colors.ink,
+  },
+  durationTextSelected: {
+    fontFamily: fonts.bold,
+    color: colors.coral,
+  },
+  retryText: {
+    fontFamily: fonts.semibold,
+    fontSize: 12.5,
+    color: colors.coralInk,
   },
   slots: {
     gap: 10,

@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
 import { Icon } from '../components/Icon';
 import { Badge } from '../components/Badge';
 import { PrimaryButton } from '../components/Button';
+import { PawsomeGradientScreen } from '../components/PawsomeGradientScreen';
 import { MascotDockSlot } from '../mascot/MascotDockSlot';
 import { useMascotActions, useMascotStatus } from '../mascot/MascotProvider';
 import { NATIVE_DRIVER } from '../theme/motion';
@@ -15,6 +15,8 @@ import { withVersion } from '../config/appInfo';
 
 /** The hero-circle slot is 220px at the design size (it shrinks on short phones); the orbs float just outside it. */
 const HERO_SIZE = 220;
+/** How much wider than the stage circle its halo is. */
+const HALO_SPREAD = 22;
 
 export function SplashScreen() {
   const { go } = useAppNavigation();
@@ -23,7 +25,7 @@ export function SplashScreen() {
   const heroSize = useResponsive().scaleHeight(HERO_SIZE);
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+    <PawsomeGradientScreen variant="HERO" edges={['top', 'bottom']}>
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
@@ -32,6 +34,19 @@ export function SplashScreen() {
 
         <View style={styles.heroGroup}>
           <View style={[styles.hero, { width: heroSize + 40, height: heroSize + 12 }]}>
+            {/* A soft sunlit halo behind Barnaby's stage; absolute, so his slot never moves. */}
+            <View
+              pointerEvents="none"
+              style={[
+                styles.halo,
+                {
+                  width: heroSize + HALO_SPREAD,
+                  height: heroSize + HALO_SPREAD,
+                  left: (40 - HALO_SPREAD) / 2,
+                  top: (12 - HALO_SPREAD) / 2,
+                },
+              ]}
+            />
             <View style={[styles.orb, styles.orbAmber]} />
             <View style={[styles.orb, styles.orbCoral]} />
             <View style={[styles.orb, styles.orbBlue]} />
@@ -59,7 +74,7 @@ export function SplashScreen() {
           onPress={() => go('begin')}
         />
       </ScrollView>
-    </SafeAreaView>
+    </PawsomeGradientScreen>
   );
 }
 
@@ -104,10 +119,6 @@ function DelightCard({ count, onPress }: { count: number; onPress: () => void })
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.canvas,
-  },
   content: {
     flexGrow: 1,
     justifyContent: 'space-between',
@@ -116,9 +127,10 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     gap: 16,
   },
+  // Translucent over the HERO sky: no panel edges.
   versionTag: {
     alignSelf: 'center',
-    ...shadows.soft,
+    backgroundColor: 'rgba(255, 255, 255, 0.62)',
   },
   heroGroup: {
     alignItems: 'center',
@@ -128,6 +140,12 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  halo: {
+    position: 'absolute',
+    borderRadius: radii.full,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    boxShadow: '0px 18px 44px rgba(255, 179, 64, 0.28)',
   },
   orb: {
     position: 'absolute',
@@ -162,9 +180,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: radii.full,
-    backgroundColor: colors.coralTint,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 107, 74, 0.25)',
+    backgroundColor: 'rgba(255, 233, 227, 0.82)',
   },
   petPillText: {
     fontFamily: fonts.bold,
@@ -185,12 +201,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     maxWidth: 280,
   },
+  // Frosted over the sky rather than a solid white box.
   card: {
     padding: 14,
     gap: 4,
     borderRadius: radii.lg,
-    backgroundColor: colors.card,
-    ...shadows.card,
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    ...shadows.soft,
   },
   cardTop: {
     flexDirection: 'row',

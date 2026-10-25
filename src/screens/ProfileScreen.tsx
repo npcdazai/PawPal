@@ -1,11 +1,13 @@
 import React, { useState, type ReactNode } from 'react';
 import { LayoutAnimation, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation } from '@tanstack/react-query';
 import { colors, radii, shadows } from '../theme/colors';
+import { gradients } from '../theme/gradients';
 import { fonts, typography } from '../theme/typography';
 import { useResponsive } from '../theme/responsive';
 import { Icon } from '../components/Icon';
+import { PawsomeGradientScreen } from '../components/PawsomeGradientScreen';
 import { Badge, type BadgeTone } from '../components/Badge';
 import { Avatar } from '../components/Avatar';
 import { Toggle } from '../components/Toggle';
@@ -75,7 +77,7 @@ export function ProfileScreen() {
   const book = (walkerId: WalkerId) => go('bookWalk', { walker: walkerId });
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <PawsomeGradientScreen variant="CROWN">
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: bottomNavClearance(insets.bottom) + 36 }]}
         showsVerticalScrollIndicator={false}
@@ -448,7 +450,7 @@ export function ProfileScreen() {
       </ScrollView>
 
       <Toast message={message} bottomOffset={BOTTOM_NAV_HEIGHT + 28} />
-    </SafeAreaView>
+    </PawsomeGradientScreen>
   );
 }
 
@@ -693,10 +695,6 @@ function ToggleRow({
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.canvas,
-  },
   content: {
     paddingHorizontal: 16,
     paddingTop: 4,
@@ -807,6 +805,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: radii.md,
     backgroundColor: colors.stage,
+    backgroundImage: gradients.peachStrip,
   },
   stat: {
     flex: 1,
@@ -894,11 +893,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.primary,
   },
+  // Good news (every hour insured) on the mint strip.
   hoursStrip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     paddingVertical: 12,
+    backgroundImage: gradients.mintStrip,
   },
   petCard: {
     gap: 14,

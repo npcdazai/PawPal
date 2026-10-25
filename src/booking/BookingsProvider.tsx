@@ -25,6 +25,8 @@ export type WalkStatus = 'scheduled' | 'enRoute' | 'inProgress' | 'completed' | 
 
 export interface WalkBooking {
   id: string;
+  /** The API's booking (POST /bookings), when the walk was booked through it. */
+  bookingId?: string | null;
   status: WalkStatus;
   tier: WalkTier;
   minutes: WalkMinutes;

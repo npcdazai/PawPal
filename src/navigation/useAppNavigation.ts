@@ -6,7 +6,9 @@ import {
   ROUTES,
   TABS,
   TAB_ROUTES,
+  resolveTabKey,
   type FlowKey,
+  type LegacyTabKey,
   type NavAction,
   type RouteKey,
   type TabKey,
@@ -99,21 +101,19 @@ export function useAppNavigation() {
     [run]
   );
 
-  /** Common tab bar: switch section in place, or switch to the tab's screen. */
+  /** Common tab bar: switch to the tab's screen, or start its flow (Book Walk). */
   const goToTab = useCallback(
-    (key: TabKey) => {
-      const tab = TABS.find((candidate) => candidate.key === key);
+    (key: TabKey | LegacyTabKey) => {
+      const tab = TABS.find((candidate) => candidate.key === resolveTabKey(key));
       if (!tab) return;
-      const params = 'section' in tab ? { section: tab.section } : undefined;
-      const current = currentRoute();
-
-      if (current?.name === ROUTES[tab.route].name) {
-        if (params && params.section !== current.params?.section) router.setParams(params);
+      if ('flow' in tab) {
+        go(tab.flow);
         return;
       }
-      run('tab', tab.route, params);
+      if (currentRoute()?.name === ROUTES[tab.route].name) return;
+      run('tab', tab.route);
     },
-    [currentRoute, router, run]
+    [currentRoute, go, run]
   );
 
   return { go, goToTab };

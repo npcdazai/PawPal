@@ -11,10 +11,12 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Badge } from '../components/Badge';
 import { PrimaryButton } from '../components/Button';
 import { Icon } from '../components/Icon';
 import { formatMoney } from '../booking/walkPlans';
 import { colors, radii, shadows } from '../theme/colors';
+import { gradients, screenGradients } from '../theme/gradients';
 import { fonts, typography } from '../theme/typography';
 import { NATIVE_DRIVER } from '../theme/motion';
 import { useResponsive } from '../theme/responsive';
@@ -25,8 +27,8 @@ import type { UpiPayee } from './youpiConfig';
 /** How long the "Paid" confirmation shows before the booking carries on. */
 const PAID_HOLD_MS = 1400;
 const UPI_APPS = ['GPay', 'PhonePe', 'Paytm', 'BHIM'] as const;
-/** The sheet never rises closer than this to the status bar; a taller body scrolls under the header. */
-const SHEET_TOP_GAP = 24;
+/** The screen always peeks out above the sheet; a taller body scrolls under the header. */
+const SHEET_TOP_PEEK = 48;
 
 export interface PaymentLine {
   label: string;
@@ -92,7 +94,7 @@ export function UpiPaymentSheet({ title, lines, total, description, metadata, on
         style={[
           styles.sheet,
           {
-            maxHeight: height - insets.top - SHEET_TOP_GAP,
+            maxHeight: height - insets.top - SHEET_TOP_PEEK,
             // The scroll view carries the last 18 of bottom padding, so the button's shadow isn't clipped.
             paddingBottom: insets.bottom,
             transform: [{ translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [420, 0] }) }],
@@ -179,25 +181,41 @@ function SheetBody({
     case 'idle':
       return (
         <View style={styles.body}>
-          <View style={styles.apps}>
-            {UPI_APPS.map((app) => (
-              <View key={app} style={styles.appChip}>
-                <Text style={styles.appText}>{app}</Text>
-              </View>
-            ))}
-            <Text style={styles.meta}>or any UPI app</Text>
+          <View style={styles.methods} role="radiogroup" aria-label="Payment method">
+            <Text style={styles.overline}>Pay with</Text>
+            {/* The one live method: UPI (the YouPI checkout, or straight from a UPI app). */}
+            <PaymentMethod
+              icon="account-balance"
+              title="BHIM / UPI"
+              detail={`${UPI_APPS.join(', ')} or any UPI app${mode === 'direct' ? ` · to ${payee.vpa}` : ' · secure checkout'}`}
+              selected
+            />
+            <PaymentMethod
+              icon="qr-code-2"
+              title="Pay at Leash Handover (In-App QR)"
+              detail="Scan a QR in the app when your walker picks Barnaby up"
+              comingSoon
+            />
+            <PaymentMethod
+              icon="account-balance-wallet"
+              title="Pawsome Wallet"
+              detail="Pay for walks from a PawPal wallet balance"
+              comingSoon
+            />
           </View>
-          {mode === 'direct' ? (
-            <View style={styles.payee}>
-              <Icon name="account-balance" size={20} color={colors.primary} />
-              <View style={styles.flex}>
-                <Text style={styles.payeeLabel}>Paying UPI ID</Text>
-                <Text style={styles.payeeVpa} selectable>
-                  {payee.vpa}
-                </Text>
-              </View>
+
+          <View style={styles.cashback}>
+            <View style={styles.cashbackIcon}>
+              <Icon name="redeem" size={20} color={colors.amberInk} />
             </View>
-          ) : null}
+            <View style={styles.flex}>
+              <Text style={styles.cashbackTitle}>Cashback rewards are coming soon</Text>
+              <Text style={styles.meta}>
+                This payment doesn’t earn cashback. We’ll let you know when walks start earning rewards.
+              </Text>
+            </View>
+          </View>
+
           <Text style={styles.note}>
             {mode === 'direct'
               ? `Your UPI app opens with ${formatMoney(total)} filled in. Pay, then come back and enter the 12-digit UPI reference from the success screen.`
@@ -306,6 +324,47 @@ function SheetBody({
         </View>
       );
   }
+}
+
+/**
+ * One payment method. UPI is the only live one, so it is always the selected
+ * radio; the others are shown, marked "Coming soon", and can't be chosen.
+ */
+function PaymentMethod({
+  icon,
+  title,
+  detail,
+  selected = false,
+  comingSoon = false,
+}: {
+  icon: string;
+  title: string;
+  detail: string;
+  selected?: boolean;
+  comingSoon?: boolean;
+}) {
+  return (
+    <View
+      accessible
+      role="radio"
+      aria-checked={selected}
+      aria-disabled={comingSoon}
+      aria-label={comingSoon ? `${title}, coming soon` : title}
+      style={[styles.method, selected && styles.methodSelected, comingSoon && styles.methodSoon]}
+    >
+      <View style={[styles.methodIcon, comingSoon && styles.methodIconSoon]}>
+        <Icon name={icon} size={20} color={comingSoon ? colors.slate : colors.primary} />
+      </View>
+      <View style={styles.flex}>
+        <Text style={[styles.methodTitle, comingSoon && styles.methodTitleSoon]}>{title}</Text>
+        <Text style={styles.methodDetail}>{detail}</Text>
+        {comingSoon ? <Badge label="Coming soon" tone="amber" style={styles.soonBadge} /> : null}
+      </View>
+      <View style={[styles.radio, selected && styles.radioOn, comingSoon && styles.radioSoon]}>
+        {selected ? <View style={styles.radioDot} /> : null}
+      </View>
+    </View>
+  );
 }
 
 /**
@@ -458,7 +517,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderTopLeftRadius: radii.xl,
     borderTopRightRadius: radii.xl,
+    // CROWN: a warm glow under the handle fading to white, so cards and inputs stay crisp.
     backgroundColor: colors.card,
+    backgroundImage: screenGradients.CROWN,
     ...shadows.float,
   },
   handle: {
@@ -466,7 +527,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 5,
     borderRadius: 3,
-    backgroundColor: colors.inputBorder,
+    backgroundColor: 'rgba(24, 26, 32, 0.12)',
   },
   header: {
     flexDirection: 'row',
@@ -511,7 +572,8 @@ const styles = StyleSheet.create({
     gap: 8,
     padding: 14,
     borderRadius: radii.lg,
-    backgroundColor: colors.stage,
+    backgroundColor: colors.card,
+    ...shadows.card,
   },
   billRow: {
     flexDirection: 'row',
@@ -547,22 +609,101 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
   },
-  apps: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
+  methods: {
     gap: 8,
   },
-  appChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: radii.full,
+  overline: {
+    ...typography.overline,
+    marginLeft: 2,
+  },
+  method: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+    borderColor: colors.inputBorder,
+    backgroundColor: colors.card,
+  },
+  methodSelected: {
+    borderColor: colors.primary,
+    backgroundColor: '#F7FAFF',
+  },
+  methodSoon: {
+    backgroundColor: colors.input,
+  },
+  methodIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primaryTint,
+  },
+  methodIconSoon: {
     backgroundColor: colors.track,
   },
-  appText: {
+  methodTitle: {
+    ...typography.subhead,
+    fontSize: 14,
+  },
+  methodTitleSoon: {
+    color: colors.slate,
+  },
+  methodDetail: {
+    ...typography.bodySm,
+    marginTop: 1,
+  },
+  soonBadge: {
+    marginTop: 6,
+  },
+  // 24 dp radio: a grey ring, or Primary Blue with a white centre when chosen.
+  radio: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderColor: colors.placeholder,
+    backgroundColor: colors.card,
+  },
+  radioOn: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
+  },
+  radioSoon: {
+    borderColor: colors.inputBorder,
+  },
+  radioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.onPrimary,
+  },
+  cashback: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: radii.md,
+    backgroundColor: colors.amberTint,
+    backgroundImage: gradients.cashbackBanner,
+  },
+  cashbackIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+  },
+  cashbackTitle: {
     fontFamily: fonts.bold,
-    fontSize: 12,
-    color: colors.ink,
+    fontSize: 13.5,
+    lineHeight: 19,
+    color: colors.amberInk,
   },
   note: {
     ...typography.body,
@@ -622,23 +763,6 @@ const styles = StyleSheet.create({
   },
   outcomeIconWarn: {
     backgroundColor: colors.coral,
-  },
-  payee: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 12,
-    borderRadius: radii.md,
-    backgroundColor: colors.primaryTint,
-  },
-  payeeLabel: {
-    ...typography.bodySm,
-    fontSize: 11,
-  },
-  payeeVpa: {
-    fontFamily: fonts.bold,
-    fontSize: 15,
-    color: colors.ink,
   },
   utrInput: {
     height: 52,

@@ -1,23 +1,26 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radii, shadows } from '../theme/colors';
+import { gradients, mapSheet } from '../theme/gradients';
 import { fonts, typography } from '../theme/typography';
 import { useResponsive } from '../theme/responsive';
 import { Icon } from '../components/Icon';
 import { Avatar } from '../components/Avatar';
 import { PrimaryButton } from '../components/Button';
 import { ActionSheet } from '../components/ActionSheet';
+import { CodeDigits } from '../components/CodeBoxes';
+import { MapScrim, MapSheet, PawsomeGradientScreen } from '../components/PawsomeGradientScreen';
 import { Toast, useToast } from '../components/Toast';
 import { useMascotActions } from '../mascot/MascotProvider';
 import { useAppNavigation } from '../navigation/useAppNavigation';
 import { useBookings, useTrackedWalk, type WalkBooking } from '../booking/BookingsProvider';
 import { WalkerChatSheet } from '../booking/WalkerChatSheet';
-import { MapPill, PulsingDot, RoundIconButton, TrackingTopBar } from '../booking/trackingUi';
+import { MapPill, MapTopBar, PulsingDot, RoundIconButton, useWalkCover } from '../booking/trackingUi';
 import { enRouteStatus } from '../booking/liveWalk';
 import { bearingAlong, boundsOf, pointAlong, splitLine, type GeoLine } from '../booking/geo';
 import { SOCIETIES } from '../booking/societies';
-import { INSURANCE_COVER, clockLabel, formatMoney } from '../booking/walkPlans';
+import { clockLabel, formatMoney } from '../booking/walkPlans';
 import { prefetchWalkLoop, usePickupRoute } from '../booking/walkRoutes';
 import { MapLine, MapMarker, PawMap } from '../maps/PawMap';
 import { BARNABY_PIN_OFFSET, BarnabyPin, WALKER_PIN_OFFSET, WalkerPin, useFrameClock } from '../maps/MapPins';
@@ -26,22 +29,25 @@ import { WALKERS, type Walker } from '../data/careTeam';
 const START_DELAY_MS = 750;
 /** The backup walker is already inside the township. */
 const BACKUP_ETA_MIN = 3;
-const MONO = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' });
-/** Room for the batch pill above, the lobby pill below and the sheet's rounded top. */
-const MAP_PADDING = { top: 120, right: 70, bottom: 110, left: 70 };
-/** Narrow phones wrap the batch pill onto a second line: keep Barnaby's label clear of it. */
-const MAP_PADDING_COMPACT = { ...MAP_PADDING, top: MAP_PADDING.top + 24 };
+/** The map owns the top of the window (MAP_SHEET); the drawer starts here. */
+const MAP_SHARE = 0.52;
+/**
+ * Room for the floating status row at the top (below the status bar) and the
+ * drawer's rounded edge at the bottom, so both pins stay in the clear.
+ */
+const mapPadding = (top: number) => ({ top: top + 130, right: 70, bottom: mapSheet.sheetRadius + 52, left: 70 });
 const ROUTE_DASH = [2, 2] as const;
-const MINT = '#E8F8F0';
 
 /** Screen 7 — WALKER_EN_ROUTE_OTP: the assigned society walker, auto-backup and the insurance OTP. */
 export function WalkerEnRouteScreen() {
   const insets = useSafeAreaInsets();
-  const { height: windowHeight, compact } = useResponsive();
+  const { height: windowHeight } = useResponsive();
   const { go } = useAppNavigation();
   const { barkWith, glance } = useMascotActions();
   const { startWalk, cancelWalk, reassignToBackup, societyProfile } = useBookings();
   const booking = useTrackedWalk();
+  // Shown only from the server's own active insurance (its doorstep check); never an assumed amount.
+  const cover = useWalkCover(booking?.bookingId);
   const { message, show } = useToast();
 
   const [now, setNow] = useState(() => Date.now());
@@ -80,10 +86,7 @@ export function WalkerEnRouteScreen() {
   const backup = booking.backupWalkerId ? WALKERS[booking.backupWalkerId] : null;
   const firstName = walker.name.split(' ')[0];
   const status = enRouteStatus(booking, now, route.lengthKm);
-  const mapHeight = Math.round(windowHeight * 0.44);
-  // Narrow phones keep the map pills inside the margins and wrap their text instead.
-  const pillLines = compact ? 2 : 1;
-  const pillStyle = compact ? styles.pillCompact : undefined;
+  const sheetTop = Math.round(windowHeight * MAP_SHARE);
   const express = booking.tier === 'express';
   const handsOn = societyProfile?.temperament === 'pulls' && walker.heavyDuty;
 
@@ -121,17 +124,12 @@ export function WalkerEnRouteScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <TrackingTopBar
-        title="Walker Match & OTP"
-        onBack={() => go('exitTracking')}
-        onInfo={() => show(`Society walkers only work inside ${society.shortName} — no traffic, no delays`)}
-      />
-
-      <View style={[styles.mapArea, { height: mapHeight }]}>
+    <PawsomeGradientScreen variant="MAP_SHEET">
+      {/* Full bleed, under the status bar; it runs on under the drawer's rounded corners. */}
+      <View style={[styles.mapArea, { height: sheetTop + mapSheet.sheetRadius }]}>
         <PawMap
           initialCenter={pickup}
-          initialBounds={{ bounds: boundsOf([from, pickup]), padding: compact ? MAP_PADDING_COMPACT : MAP_PADDING }}
+          initialBounds={{ bounds: boundsOf([from, pickup]), padding: mapPadding(insets.top) }}
           style={StyleSheet.absoluteFill}
         >
           {/* Barnaby waits at his lobby with the leash (IDLE_WAG; tap him to woof). */}
@@ -147,33 +145,25 @@ export function WalkerEnRouteScreen() {
           </MapMarker>
           <WalkerOnRoute route={route} booking={booking} walker={walker} running={!status.arrived} />
         </PawMap>
-
-        <View style={styles.topPillRow} pointerEvents="none">
-          <MapPill style={pillStyle}>
-            <PulsingDot />
-            <Text style={styles.pillText} numberOfLines={pillLines}>
-              {booking.reassigned
-                ? `Backup ${walker.shortName} assigned`
-                : booking.walkerFromTower
-                  ? `Finishing ${clockLabel(booking.slotStart - 30)} slot at Tower ${booking.walkerFromTower}`
-                  : express
-                    ? 'Express walker dispatched'
-                    : `Starting ${society.shortName} batch`}{' '}
-              <Text style={styles.pillStrong}>• 0 m travel delay</Text>
-            </Text>
-          </MapPill>
-        </View>
-        <View style={styles.bottomPillRow} pointerEvents="none">
-          <MapPill style={pillStyle}>
-            <Icon name="place" size={17} color={colors.coral} />
-            <Text style={styles.pillText} numberOfLines={pillLines}>
-              {booking.tower} Main Lobby • <Text style={styles.pillStrong}>{arrivalText}</Text>
-            </Text>
-          </MapPill>
-        </View>
       </View>
 
-      <View style={styles.sheet}>
+      {/* The only cover on the map: a scrim behind the floating status row. */}
+      <MapScrim />
+      <MapTopBar
+        onBack={() => go('exitTracking')}
+        onInfo={() => show(`Society walkers only work inside ${society.shortName} — no traffic, no delays`)}
+      >
+        <MapPill style={styles.statusPill}>
+          <PulsingDot />
+          <Text style={styles.pillText} numberOfLines={2}>
+            {booking.reassigned ? `Backup ${walker.shortName} • ` : ''}
+            <Text style={styles.pillStrong}>{arrivalText}</Text>
+            {status.arrived ? '' : ` • ${booking.tower} lobby`} • 0 m travel delay
+          </Text>
+        </MapPill>
+      </MapTopBar>
+
+      <MapSheet style={[styles.sheet, { top: sheetTop }]}>
         <View style={styles.handle} />
         <ScrollView style={styles.flex} contentContainerStyle={styles.sheetContent} showsVerticalScrollIndicator={false}>
           <View>
@@ -183,7 +173,9 @@ export function WalkerEnRouteScreen() {
                 {booking.reassigned ? 'BACKUP SOCIETY WALKER ASSIGNED' : 'SOCIETY RESIDENT WALKER ASSIGNED'}
               </Text>
             </View>
-            <Text style={styles.sheetTitle}>Your Society Walker is Ready!</Text>
+            <Text style={styles.sheetTitle} role="heading">
+              Your Society Walker is Ready!
+            </Text>
             <Text style={styles.meta}>
               Operating exclusively within {society.label} • {booking.slotLabel}
             </Text>
@@ -254,26 +246,37 @@ export function WalkerEnRouteScreen() {
             </View>
           </View>
 
-          {/* OTP leash handover + insurance activation */}
+          {/* Doorstep leash handover: the code, and when the walk's cover starts */}
           <View style={styles.otpCard}>
-            <View style={styles.otpHeader}>
-              <Text style={[styles.otpTitle, styles.flex]}>
-                🔒 Share OTP at doorstep to start the {booking.minutes}-min GPS timer and unlock{' '}
-                {formatMoney(INSURANCE_COVER)} Active Walk Vet & Accident Insurance.
-              </Text>
-            </View>
-            <View style={styles.digits} aria-label={`One-time code ${booking.otp.split('').join(' ')}`}>
-              {booking.otp.split('').map((digit, index) => (
-                <View key={`${digit}-${index}`} style={styles.digitBox}>
-                  <Text style={styles.digit}>{digit}</Text>
-                </View>
-              ))}
-            </View>
             <View style={styles.inlineRow}>
-              <Icon name="info-outline" size={15} color={colors.slate} />
-              <Text style={[styles.meta, styles.flex]}>
-                {firstName} verifies this code on the PawPal Partner app before starting the walk.
-              </Text>
+              <Icon name="lock" size={17} color={colors.primary} />
+              <Text style={styles.otpTitle}>Doorstep handover code</Text>
+            </View>
+            <Text style={styles.meta}>
+              Share it at the door: {firstName} enters it on the PawPal Partner app to start the{' '}
+              {booking.minutes}-min GPS timer.
+            </Text>
+            <CodeDigits
+              value={booking.otp}
+              length={booking.otp.length}
+              size="lg"
+              accessibilityLabel={`One-time code ${booking.otp.split('').join(' ')}`}
+            />
+            <View style={styles.insurance}>
+              <View style={styles.insuranceIcon}>
+                <Icon name="health-and-safety" size={20} color={colors.coralInk} />
+              </View>
+              <View style={styles.flex}>
+                {/* An amount only from the booking's own active cover; never an assumed figure. */}
+                <Text style={styles.insuranceTitle}>
+                  {cover ? `${formatMoney(cover)} vet & accident cover active` : 'Vet & accident walk cover'}
+                </Text>
+                <Text style={styles.insuranceText}>
+                  {cover
+                    ? `Switched on when ${firstName} checked in at your door.`
+                    : `Walk cover starts when ${firstName} checks in at your door.`}
+                </Text>
+              </View>
             </View>
             <View style={styles.warning}>
               <Text style={styles.warningText}>⚠️ Off-app walks are uninsured and unmonitored.</Text>
@@ -300,7 +303,7 @@ export function WalkerEnRouteScreen() {
             </Pressable>
           </View>
         </View>
-      </View>
+      </MapSheet>
 
       <Toast message={message} bottomOffset={150} />
 
@@ -336,7 +339,7 @@ export function WalkerEnRouteScreen() {
           onClose={() => setConfirmCancel(false)}
         />
       ) : null}
-    </SafeAreaView>
+    </PawsomeGradientScreen>
   );
 }
 
@@ -375,21 +378,17 @@ function WalkerOnRoute({
 /** Shown when tracking is opened with no walker on the way. */
 export function NoActiveWalk({ onBack }: { onBack: () => void }) {
   return (
-    <SafeAreaView style={[styles.safe, styles.empty]}>
+    <PawsomeGradientScreen variant="CROWN" edges={['top', 'bottom']} style={styles.empty}>
       <Text style={styles.sheetTitle}>No walk in progress</Text>
       <Text style={[styles.meta, styles.emptyText]}>
         Book a society walk from the dashboard and you can follow it live here.
       </Text>
       <PrimaryButton label="Back to dashboard" onPress={onBack} style={styles.emptyButton} />
-    </SafeAreaView>
+    </PawsomeGradientScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.canvas,
-  },
   flex: {
     flex: 1,
   },
@@ -402,6 +401,10 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   mapArea: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     overflow: 'hidden',
     backgroundColor: '#FFFDF9',
   },
@@ -410,22 +413,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.onPrimary,
   },
-  topPillRow: {
-    position: 'absolute',
-    top: 12,
-    left: 16,
-    right: 16,
-    alignItems: 'center',
-  },
-  bottomPillRow: {
-    position: 'absolute',
-    bottom: 42,
-    left: 16,
-    right: 16,
-    alignItems: 'center',
-  },
-  pillCompact: {
+  statusPill: {
     maxWidth: '100%',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    gap: 8,
   },
   pillText: {
     ...typography.label,
@@ -435,13 +427,12 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontFamily: fonts.extrabold,
   },
+  // MapSheet draws the rounded white → ivory → peach drawer; this places it.
   sheet: {
-    flex: 1,
-    marginTop: -28,
-    borderTopLeftRadius: radii.xl,
-    borderTopRightRadius: radii.xl,
-    backgroundColor: colors.card,
-    boxShadow: '0px -12px 32px rgba(24, 26, 32, 0.08)',
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   handle: {
     alignSelf: 'center',
@@ -543,9 +534,8 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 14,
     borderRadius: radii.lg,
-    backgroundColor: MINT,
-    borderWidth: 1,
-    borderColor: 'rgba(46, 204, 113, 0.3)',
+    backgroundColor: colors.successTint,
+    backgroundImage: gradients.mintStrip,
   },
   backupIcon: {
     width: 40,
@@ -586,39 +576,42 @@ const styles = StyleSheet.create({
   otpCard: {
     gap: 12,
     padding: 16,
-    borderRadius: 20,
-    backgroundColor: colors.stage,
-  },
-  otpHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
+    borderRadius: radii.lg,
+    backgroundColor: colors.card,
+    backgroundImage: gradients.proofCard,
+    ...shadows.card,
   },
   otpTitle: {
+    ...typography.subhead,
+  },
+  insurance: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: radii.md,
+    backgroundColor: colors.stage,
+    backgroundImage: gradients.insuranceBanner,
+  },
+  insuranceIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+  },
+  insuranceTitle: {
     fontFamily: fonts.bold,
     fontSize: 13.5,
     lineHeight: 19,
     color: colors.coralInk,
   },
-  digits: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  digitBox: {
-    width: 56,
-    height: 60,
-    borderRadius: radii.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.card,
-    ...shadows.card,
-  },
-  digit: {
-    fontFamily: MONO,
-    fontWeight: '700',
-    fontSize: 26,
-    color: colors.primary,
+  insuranceText: {
+    fontFamily: fonts.medium,
+    fontSize: 12.5,
+    lineHeight: 17,
+    color: colors.ink,
   },
   warning: {
     paddingHorizontal: 10,
@@ -631,12 +624,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.coralInk,
   },
+  // Transparent: the drawer's gradient runs down behind the actions.
   footer: {
     gap: 10,
     paddingTop: 10,
     paddingHorizontal: 18,
     alignItems: 'stretch',
-    backgroundColor: colors.card,
   },
   footerLinks: {
     flexDirection: 'row',

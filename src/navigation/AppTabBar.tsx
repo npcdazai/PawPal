@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Animated, StyleSheet } from 'react-native';
-import { useGlobalSearchParams, usePathname } from 'expo-router';
+import { usePathname } from 'expo-router';
 import { BottomNavigation } from '../components/BottomNavigation';
 import { NATIVE_DRIVER } from '../theme/motion';
 import { useMascotStatus } from '../mascot/MascotProvider';
@@ -10,6 +10,8 @@ import { useAppNavigation } from './useAppNavigation';
 /** Far enough below the screen edge to hide the bar and its shadow. */
 const HIDDEN_OFFSET = 160;
 
+const isScreenTab = (key: TabKey) => TABS.some((tab) => tab.key === key && 'route' in tab);
+
 /**
  * The one common bottom navigation bar. Rendered once in the root layout,
  * above the stack, on every route whose group has `tabBar: true` — so it
@@ -18,12 +20,11 @@ const HIDDEN_OFFSET = 160;
  */
 export function AppTabBar() {
   const pathname = usePathname();
-  const { section } = useGlobalSearchParams<{ section?: string }>();
   const { goToTab } = useAppNavigation();
   const { hapticsEnabled } = useMascotStatus();
 
   const route = routeForPath(pathname);
-  const visibleKey = route?.tabBar ? activeTabFor(route.key, section)?.key : undefined;
+  const visibleKey = route?.tabBar ? activeTabFor(route.key)?.key : undefined;
 
   // Remember the last tab so the pill stays put while the bar slides away.
   const [lastKey, setLastKey] = useState<TabKey | undefined>(visibleKey);
@@ -38,6 +39,8 @@ export function AppTabBar() {
         tabs={TABS}
         current={current}
         onChange={goToTab}
+        // Book Walk opens the booking flow on top: it never becomes the highlighted tab.
+        selectable={isScreenTab}
         haptics={hapticsEnabled}
       />
     </SlideIn>

@@ -4,7 +4,8 @@
  * the walkers already working inside the township.
  */
 export type WalkTier = 'subscription' | 'trial' | 'express';
-export type WalkMinutes = 15 | 30;
+/** Trial 15, subscription 30, express 30 / 45 / 60. */
+export type WalkMinutes = 15 | 30 | 45 | 60;
 export type Batch = 'morning' | 'evening';
 
 export const SUBSCRIPTION_PER_WALK = 120;
@@ -118,6 +119,13 @@ export function slotRange(startMin: number, length: number = SLOT_MINUTES): stri
 
 /** Minutes from midnight right now. */
 export const minuteOfDay = (date: Date = new Date()) => date.getHours() * 60 + date.getMinutes();
+
+/** When a daily slot next starts (epoch ms): later today if it's still ahead, else tomorrow. */
+export function nextSlotTime(slotStart: number, now: Date = new Date()): number {
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, slotStart);
+  if (start.getTime() <= now.getTime()) start.setDate(start.getDate() + 1);
+  return start.getTime();
+}
 
 /**
  * Prices are in Indian rupees (UPI only settles INR): "₹350", "₹1,250", "₹12.50".

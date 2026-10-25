@@ -140,7 +140,8 @@
       "PowerShell(Get-NetTCPConnection -State Listen -LocalPort 4200 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -Confirm:$false }; Set-Location C:\\\\Pratham\\\\Pratham\\\\Developer\\\\PawPalBackend; npx tsc --noEmit 2>&1 | Select-Object -First 20; \"TSC: $LASTEXITCODE\"; npm test 2>&1 | Select-String -Pattern '^ℹ \\(tests|pass|fail\\)|✖|AssertionError' | Select-Object -First 20)",
       "mcp__claude_ai_Claude_Docs__guide",
       "mcp__claude_ai_Claude_Docs__batch",
-      "mcp__claude_ai_Claude_Docs__update"
+      "mcp__claude_ai_Claude_Docs__update",
+      "mcp__claude_ai_Claude_Docs__read"
     ]
   },
   "enabledPlugins": {

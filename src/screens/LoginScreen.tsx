@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation } from '@tanstack/react-query';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
 import { Icon } from '../components/Icon';
 import { Badge } from '../components/Badge';
 import { FormField } from '../components/FormField';
+import { CodeBoxes } from '../components/CodeBoxes';
 import { PrimaryButton } from '../components/Button';
+import { PawsomeGradientScreen } from '../components/PawsomeGradientScreen';
 import { Toast, useToast } from '../components/Toast';
 import { MascotDockSlot } from '../mascot/MascotDockSlot';
 import { useMascotActions, useMascotState } from '../mascot/MascotProvider';
@@ -114,9 +115,8 @@ export function LoginScreen() {
   const error = sentTo ? (verifyError ?? sendError) : sendError;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <PawsomeGradientScreen variant="CROWN">
       <ScrollView
-        style={styles.scroll}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets
@@ -148,27 +148,25 @@ export function LoginScreen() {
                 </Text>
               </View>
 
-              <FormField
-                label={`${SMS_CODE_LENGTH}-digit code`}
-                icon="sms"
-                placeholder="••••••"
-                value={code}
-                onChangeText={setCode}
-                keyboardType="number-pad"
-                textContentType="oneTimeCode"
-                autoComplete="sms-otp"
-                maxLength={SMS_CODE_LENGTH}
-                returnKeyType="go"
-                onSubmitEditing={submitCode}
-                editable={!verifying}
-                accessory={
+              <View style={styles.codeGroup}>
+                <View style={styles.labelRow}>
+                  <Text style={styles.label}>{`${SMS_CODE_LENGTH}-digit code`}</Text>
                   <Pressable onPress={changeNumber} accessibilityRole="button" hitSlop={8}>
                     <Text style={styles.link}>Change number</Text>
                   </Pressable>
-                }
-                onFocus={() => focusField('password')}
-                onBlur={blurField}
-              />
+                </View>
+                <CodeBoxes
+                  value={code}
+                  onChangeText={setCode}
+                  length={SMS_CODE_LENGTH}
+                  accessibilityLabel={`${SMS_CODE_LENGTH}-digit code`}
+                  onSubmitEditing={submitCode}
+                  editable={!verifying}
+                  invalid={Boolean(verifyError)}
+                  onFocus={() => focusField('password')}
+                  onBlur={blurField}
+                />
+              </View>
 
               {method === 'dev' ? (
                 <Text style={styles.note}>
@@ -252,7 +250,7 @@ export function LoginScreen() {
         </View>
       </ScrollView>
       <Toast message={message} />
-    </SafeAreaView>
+    </PawsomeGradientScreen>
   );
 }
 
@@ -266,31 +264,35 @@ function ErrorLine({ message }: { message: string }) {
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.stage,
-  },
-  scroll: {
-    backgroundColor: colors.canvas,
-  },
   content: {
     paddingBottom: 32,
   },
+  // Sits straight on the CROWN glow: no panel of its own.
   header: {
     alignItems: 'center',
     gap: 6,
     paddingTop: 14,
     paddingHorizontal: 16,
     paddingBottom: HEADER_BOTTOM_PAD,
-    backgroundColor: colors.stage,
-    borderBottomLeftRadius: 40,
-    borderBottomRightRadius: 40,
   },
   statusPill: {
     alignSelf: 'center',
     paddingHorizontal: 12,
     paddingVertical: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.78)',
     ...shadows.soft,
+  },
+  codeGroup: {
+    gap: 10,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 2,
+  },
+  label: {
+    ...typography.label,
   },
   card: {
     marginTop: -CARD_OVERLAP,

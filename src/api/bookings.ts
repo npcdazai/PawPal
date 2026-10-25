@@ -1,15 +1,18 @@
 import { apiRequest } from './client';
-import type { Booking, CheckoutSession, NewBooking, Subscription } from './types';
+import type { Booking, CheckoutSession, NewBooking } from './types';
 
 const bookingPath = (id: string) => `/bookings/${encodeURIComponent(id)}`;
 
-/** 201: priced by the server; `awaiting_payment` when payments are on, else straight to `searching`. */
+/**
+ * 201: priced by the server; `awaiting_payment` when payments are on, else
+ * straight to `searching`. `minutes` only for express (400 `minutes_not_allowed`).
+ */
 export async function createBooking(input: NewBooking): Promise<Booking> {
   const { booking } = await apiRequest<{ booking: Booking }>('/bookings', { method: 'POST', body: input });
   return booking;
 }
 
-/** Own walks, newest `scheduledFor` first. Without `walker`: fetch one booking for that. */
+/** Own walks, newest `scheduledFor` first, each with its `walker` and `distanceKm` (DASHBOARD_API §5). */
 export async function listBookings(): Promise<Booking[]> {
   const { bookings } = await apiRequest<{ bookings: Booking[] }>('/bookings');
   return bookings;
@@ -54,18 +57,4 @@ export function startPayment(id: string): Promise<CheckoutSession> {
 export async function refreshPayment(id: string): Promise<Booking> {
   const { booking } = await apiRequest<{ booking: Booking }>(`${bookingPath(id)}/payment`);
   return booking;
-}
-
-export async function listSubscriptions(): Promise<Subscription[]> {
-  const { subscriptions } = await apiRequest<{ subscriptions: Subscription[] }>('/subscriptions');
-  return subscriptions;
-}
-
-/** Stops future walks; walks already created stay (cancel those one by one). */
-export async function cancelSubscription(id: string): Promise<Subscription> {
-  const { subscription } = await apiRequest<{ subscription: Subscription }>(
-    `/subscriptions/${encodeURIComponent(id)}/cancel`,
-    { method: 'POST' }
-  );
-  return subscription;
 }

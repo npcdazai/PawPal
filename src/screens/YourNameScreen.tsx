@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { colors, radii, shadows } from '../theme/colors';
 import { fonts, typography } from '../theme/typography';
 import { Icon } from '../components/Icon';
 import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/Button';
+import { PawsomeGradientScreen } from '../components/PawsomeGradientScreen';
 import { MascotDockSlot } from '../mascot/MascotDockSlot';
 import { useMascotActions } from '../mascot/MascotProvider';
 import { updateMe } from '../api/account';
@@ -51,7 +51,7 @@ export function YourNameScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <PawsomeGradientScreen variant="CROWN">
       <ScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
@@ -62,79 +62,83 @@ export function YourNameScreen() {
           <MascotDockSlot variant="auth-header" />
         </View>
 
-        <View style={styles.formHeader}>
-          <Text style={styles.title} role="heading">
-            Nice to meet you!
-          </Text>
-          <Text style={styles.subtitle}>What should your walker call you?</Text>
-        </View>
-
-        <FormField
-          label="Your Name"
-          icon="person"
-          placeholder="e.g. Maya Lin"
-          value={name}
-          onChangeText={setName}
-          autoComplete="name"
-          textContentType="name"
-          autoCapitalize="words"
-          maxLength={MAX_NAME_LENGTH}
-          returnKeyType="done"
-          onSubmitEditing={submit}
-          editable={!saving}
-          complete={trimmed.length > 0}
-          onFocus={() => focusField('text')}
-          onBlur={blurField}
-        />
-
-        {saveError ? (
-          <View style={styles.error} role="alert" accessibilityLiveRegion="polite">
-            <Icon name="error-outline" size={18} color={colors.coralInk} />
-            <Text style={styles.errorText}>{errorMessage(saveError)}</Text>
+        <View style={styles.card}>
+          <View style={styles.formHeader}>
+            <Text style={styles.title} role="heading">
+              Nice to meet you!
+            </Text>
+            <Text style={styles.subtitle}>What should your walker call you?</Text>
           </View>
-        ) : null}
 
-        <PrimaryButton
-          label={saving ? 'Saving…' : 'Continue'}
-          trailingIcon={saving ? null : 'arrow-forward'}
-          onPress={submit}
-          disabled={!ready}
-        />
+          <FormField
+            label="Your Name"
+            icon="person"
+            placeholder="e.g. Maya Lin"
+            value={name}
+            onChangeText={setName}
+            autoComplete="name"
+            textContentType="name"
+            autoCapitalize="words"
+            maxLength={MAX_NAME_LENGTH}
+            returnKeyType="done"
+            onSubmitEditing={submit}
+            editable={!saving}
+            complete={trimmed.length > 0}
+            onFocus={() => focusField('text')}
+            onBlur={blurField}
+          />
 
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Wrong number? </Text>
-          <Pressable
-            onPress={() => leave()}
-            disabled={leaving}
-            accessibilityRole="button"
-            accessibilityState={{ disabled: leaving }}
-            hitSlop={8}
-          >
-            <Text style={styles.footerLink}>{leaving ? 'Signing out…' : 'Sign out'}</Text>
-          </Pressable>
+          {saveError ? (
+            <View style={styles.error} role="alert" accessibilityLiveRegion="polite">
+              <Icon name="error-outline" size={18} color={colors.coralInk} />
+              <Text style={styles.errorText}>{errorMessage(saveError)}</Text>
+            </View>
+          ) : null}
+
+          <PrimaryButton
+            label={saving ? 'Saving…' : 'Continue'}
+            trailingIcon={saving ? null : 'arrow-forward'}
+            onPress={submit}
+            disabled={!ready}
+          />
+
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>Wrong number? </Text>
+            <Pressable
+              onPress={() => leave()}
+              disabled={leaving}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: leaving }}
+              hitSlop={8}
+            >
+              <Text style={styles.footerLink}>{leaving ? 'Signing out…' : 'Sign out'}</Text>
+            </Pressable>
+          </View>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </PawsomeGradientScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.canvas,
-  },
   content: {
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 32,
     gap: 20,
   },
+  // Barnaby's stage sits straight on the CROWN glow: no panel around his slot.
   stage: {
     alignItems: 'center',
-    padding: 16,
+    paddingTop: 8,
+  },
+  // Inputs keep crisp contrast on a white card.
+  card: {
+    gap: 18,
+    padding: 22,
     borderRadius: radii.xl,
-    backgroundColor: colors.stage,
-    ...shadows.soft,
+    backgroundColor: colors.card,
+    ...shadows.card,
   },
   formHeader: {
     gap: 4,

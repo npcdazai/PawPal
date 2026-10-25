@@ -1,20 +1,22 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radii, shadows } from '../theme/colors';
+import { gradients, mapSheet } from '../theme/gradients';
 import { fonts, typography } from '../theme/typography';
 import { useResponsive } from '../theme/responsive';
 import { Icon } from '../components/Icon';
 import { Avatar } from '../components/Avatar';
 import { ActionSheet } from '../components/ActionSheet';
+import { MapScrim, MapSheet, PawsomeGradientScreen } from '../components/PawsomeGradientScreen';
 import { Toast, useToast } from '../components/Toast';
 import { useMascotActions, useMascotStatus } from '../mascot/MascotProvider';
 import { useAppNavigation } from '../navigation/useAppNavigation';
 import { useBookings, useTrackedWalk, type WalkBooking } from '../booking/BookingsProvider';
 import { WalkerChatSheet } from '../booking/WalkerChatSheet';
 import { WalkCompleteModal } from '../booking/WalkCompleteModal';
-import { MapPill, PulsingDot, RoundIconButton, TrackingTopBar } from '../booking/trackingUi';
+import { MapPill, MapTopBar, PulsingDot, RoundIconButton, useWalkCover } from '../booking/trackingUi';
 import {
   EVENT_META,
   SIMULATED_ACTIONS,
@@ -26,7 +28,7 @@ import {
 } from '../booking/liveWalk';
 import { boundsOf, headingAlong, pointAlong, splitLine, type GeoLine } from '../booking/geo';
 import { SOCIETIES } from '../booking/societies';
-import { BATCHES, INSURANCE_COVER, SUBSCRIPTION_PER_WALK, formatMoney, slotRange } from '../booking/walkPlans';
+import { BATCHES, SUBSCRIPTION_PER_WALK, formatMoney, slotRange } from '../booking/walkPlans';
 import { useWalkLoop, walkLoopWaypoints } from '../booking/walkRoutes';
 import { MapLine, MapMarker, PawMap } from '../maps/PawMap';
 import {
@@ -47,13 +49,16 @@ const LIVE_PHOTO = require('../../assets/corgi_dashboard.jpg');
 
 const TICK_MS = 250;
 const COMPLETE_DELAY_MS = 650;
-/** Room for the insurance pill above and Barnaby's pin wherever he is on the loop. */
-const MAP_PADDING = { top: 120, right: 60, bottom: 90, left: 60 };
+/**
+ * Room for the floating live row at the top (below the status bar), the
+ * drawer's rounded edge at the bottom, and Barnaby's pin wherever he is on the loop.
+ */
+const mapPadding = (top: number) => ({ top: top + 130, right: 60, bottom: mapSheet.sheetRadius + 48, left: 60 });
 const TRAIL_AHEAD = '#8FAEFF';
 const STAGES = ['gate', 'Garden Loop', 'Return & Handover'] as const;
-/** The map's share of the window; short phones give the walk sheet a little more. */
-const MAP_SHARE = 0.46;
-const MAP_SHARE_SHORT = 0.42;
+/** Where the walk drawer starts (MAP_SHEET); short phones give it a little more room. */
+const MAP_SHARE = 0.52;
+const MAP_SHARE_SHORT = 0.5;
 /** The check-in photo viewer, at the design size. */
 const PHOTO_HEIGHT = 220;
 
@@ -93,6 +98,8 @@ export function LiveWalkScreen() {
   const { hapticsEnabled } = useMascotStatus();
   const { completeWalk, logEvent } = useBookings();
   const booking = useTrackedWalk();
+  // An amount only from the server's own active insurance (its doorstep check); never assumed.
+  const cover = useWalkCover(booking?.bookingId);
   const { message, show } = useToast();
 
   const [now, setNow] = useState(() => Date.now());
@@ -165,7 +172,7 @@ export function LiveWalkScreen() {
   const society = SOCIETIES[booking.society];
   const walker = WALKERS[booking.walkerId];
   const firstName = walker.name.split(' ')[0];
-  const mapHeight = Math.round(r.height * (r.short ? MAP_SHARE_SHORT : MAP_SHARE));
+  const sheetTop = Math.round(r.height * (r.short ? MAP_SHARE_SHORT : MAP_SHARE));
   // Narrow phones: tighter stat tiles, so their labels keep to fewer lines.
   const tileStyle = [styles.tile, r.compact && styles.tileCompact];
   const percent = Math.round(status.progress * 100);
@@ -199,17 +206,12 @@ export function LiveWalkScreen() {
   const masked = (who: string) => show(`📞 Connecting to ${who} via PawPal’s masked line…`);
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <TrackingTopBar
-        title="Live Society Walk"
-        onBack={() => go('exitTracking')}
-        onInfo={() => show('Every stop is GPS-stamped by the walker’s app — gallery uploads are disabled')}
-      />
-
-      <View style={[styles.mapArea, { height: mapHeight }]}>
+    <PawsomeGradientScreen variant="MAP_SHEET">
+      {/* Full bleed, under the status bar; it runs on under the drawer's rounded corners. */}
+      <View style={[styles.mapArea, { height: sheetTop + mapSheet.sheetRadius }]}>
         <PawMap
           initialCenter={pickup}
-          initialBounds={{ bounds: boundsOf(walkLoopWaypoints(pickup, 0.42)), padding: MAP_PADDING }}
+          initialBounds={{ bounds: boundsOf(walkLoopWaypoints(pickup, 0.42)), padding: mapPadding(insets.top) }}
           style={StyleSheet.absoluteFill}
         >
           <MapLine id="walk-ahead" coords={ahead} color={TRAIL_AHEAD} width={4} dash={[1.5, 1.5]} opacity={0.9} />
@@ -239,33 +241,26 @@ export function LiveWalkScreen() {
 
           <BarnabyOnLoop loop={loop} booking={booking} walker={walker} running={!status.done} active={!completed} />
         </PawMap>
-
-        <View style={styles.liveRow} pointerEvents="none">
-          <MapPill style={styles.livePill}>
-            <PulsingDot />
-            <Text style={styles.liveText} numberOfLines={2}>
-              LIVE SOCIETY WALK{' '}
-              <Text style={styles.liveCover}>• 🛡️ {formatMoney(INSURANCE_COVER)} Vet Insurance Cover ACTIVE</Text>
-            </Text>
-          </MapPill>
-        </View>
-
-        <View style={styles.simulateRow} pointerEvents="box-none">
-          <Pressable
-            onPress={simulateAction}
-            accessibilityRole="button"
-            aria-label={`Simulate walker action: drop a ${nextAction} pin`}
-            style={({ pressed }) => [styles.simulate, status.done && styles.simulateDone, pressed && styles.pressed]}
-          >
-            <Icon name="add-location-alt" size={17} color={colors.onPrimary} />
-            <Text style={styles.simulateText}>
-              Simulate Walker Action <Text style={styles.simulateNext}>+ {ACTION_LABEL[nextAction]} Pin</Text>
-            </Text>
-          </Pressable>
-        </View>
       </View>
 
-      <View style={styles.sheet}>
+      {/* The only cover on the map: a scrim behind the floating live row. */}
+      <MapScrim />
+      <MapTopBar
+        onBack={() => go('exitTracking')}
+        onInfo={() => show('Every stop is GPS-stamped by the walker’s app — gallery uploads are disabled')}
+      >
+        <MapPill style={styles.livePill}>
+          <PulsingDot />
+          <Text style={styles.liveText} numberOfLines={2}>
+            LIVE SOCIETY WALK{' '}
+            <Text style={styles.liveCover}>
+              • 🛡️ {cover ? `${formatMoney(cover)} Vet Cover ACTIVE` : 'Covered from doorstep check-in'}
+            </Text>
+          </Text>
+        </MapPill>
+      </MapTopBar>
+
+      <MapSheet style={[styles.sheet, { top: sheetTop }]}>
         <View style={styles.handle} />
         <ScrollView style={styles.flex} contentContainerStyle={styles.sheetContent} showsVerticalScrollIndicator={false}>
           <View style={styles.countRow}>
@@ -280,7 +275,7 @@ export function LiveWalkScreen() {
             </View>
             <View style={styles.coverPill}>
               <Icon name="verified-user" size={16} color={colors.successInk} />
-              <Text style={styles.coverText}>Accident Cover{'\n'}Active</Text>
+              <Text style={styles.coverText}>{cover ? `Accident Cover\nActive` : `Cover from\ncheck-in`}</Text>
             </View>
           </View>
 
@@ -334,10 +329,27 @@ export function LiveWalkScreen() {
                 <Icon name="health-and-safety" size={16} color={colors.successInk} />
                 <Text style={styles.tileLabel}>Insurance</Text>
               </View>
-              <Text style={styles.tileValue}>₹10K</Text>
-              <Text style={[styles.tileMeta, styles.tileGood]}>{status.done ? 'Closed safely ✓' : 'Active • GPS stamped'}</Text>
+              <Text style={styles.tileValue} numberOfLines={1}>
+                {cover ? formatMoney(cover) : 'Included'}
+              </Text>
+              <Text style={[styles.tileMeta, styles.tileGood]}>
+                {status.done ? 'Closed safely ✓' : cover ? 'Active • GPS stamped' : 'From doorstep check-in'}
+              </Text>
             </View>
           </View>
+
+          {/* Walker-side demo: drops the next pee / poop / photo pin (kept off the map). */}
+          <Pressable
+            onPress={simulateAction}
+            accessibilityRole="button"
+            aria-label={`Simulate walker action: drop a ${nextAction} pin`}
+            style={({ pressed }) => [styles.simulate, status.done && styles.simulateDone, pressed && styles.pressed]}
+          >
+            <Icon name="add-location-alt" size={17} color={colors.onPrimary} />
+            <Text style={styles.simulateText}>
+              Simulate Walker Action <Text style={styles.simulateNext}>+ {ACTION_LABEL[nextAction]} Pin</Text>
+            </Text>
+          </Pressable>
 
           {photo ? (
             <Pressable
@@ -414,7 +426,7 @@ export function LiveWalkScreen() {
             <Icon name="arrow-forward" size={18} color={colors.onPrimary} />
           </Pressable>
         </View>
-      </View>
+      </MapSheet>
 
       <Toast message={message} bottomOffset={100} />
 
@@ -467,7 +479,11 @@ export function LiveWalkScreen() {
       {sosOpen ? (
         <ActionSheet
           title="SOS Vet"
-          subtitle={`Your ${formatMoney(INSURANCE_COVER)} vet & accident cover is active for this walk.`}
+          subtitle={
+            cover
+              ? `Your ${formatMoney(cover)} vet & accident cover is active for this walk.`
+              : 'Vet & accident cover applies to this walk from the doorstep check-in.'
+          }
           options={[
             {
               icon: 'local-hospital',
@@ -516,7 +532,7 @@ export function LiveWalkScreen() {
           }}
         />
       ) : null}
-    </SafeAreaView>
+    </PawsomeGradientScreen>
   );
 }
 
@@ -558,10 +574,6 @@ function BarnabyOnLoop({
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.canvas,
-  },
   flex: {
     flex: 1,
   },
@@ -572,6 +584,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   mapArea: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     overflow: 'hidden',
     backgroundColor: '#FFFDF9',
   },
@@ -587,15 +603,11 @@ const styles = StyleSheet.create({
   pinStar: {
     color: colors.amber,
   },
-  liveRow: {
-    position: 'absolute',
-    top: 12,
-    left: 16,
-    right: 16,
-    alignItems: 'center',
-  },
   livePill: {
     maxWidth: '100%',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    gap: 8,
   },
   liveText: {
     flexShrink: 1,
@@ -609,22 +621,16 @@ const styles = StyleSheet.create({
     color: colors.successInk,
     letterSpacing: 0,
   },
-  simulateRow: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 40,
-    alignItems: 'center',
-  },
   simulate: {
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'center',
     gap: 6,
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: radii.full,
     backgroundColor: colors.ink,
-    ...shadows.float,
+    ...shadows.soft,
   },
   simulateDone: {
     opacity: 0.5,
@@ -637,13 +643,12 @@ const styles = StyleSheet.create({
   simulateNext: {
     color: colors.amber,
   },
+  // MapSheet draws the rounded white → ivory → peach drawer; this places it.
   sheet: {
-    flex: 1,
-    marginTop: -28,
-    borderTopLeftRadius: radii.xl,
-    borderTopRightRadius: radii.xl,
-    backgroundColor: colors.card,
-    boxShadow: '0px -12px 32px rgba(24, 26, 32, 0.08)',
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   handle: {
     alignSelf: 'center',
@@ -690,6 +695,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: radii.full,
     backgroundColor: colors.successTint,
+    backgroundImage: gradients.mintStrip,
   },
   coverText: {
     fontFamily: fonts.bold,
@@ -785,6 +791,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 18,
     backgroundColor: colors.stage,
+    backgroundImage: gradients.peachStrip,
   },
   proofPending: {
     borderWidth: 1.5,
@@ -850,12 +857,12 @@ const styles = StyleSheet.create({
     ...typography.bodySm,
     color: colors.ink,
   },
+  // Transparent: the drawer's gradient runs down behind the actions.
   footer: {
     flexDirection: 'row',
     gap: 10,
     paddingTop: 10,
     paddingHorizontal: 16,
-    backgroundColor: colors.card,
   },
   sos: {
     height: 56,

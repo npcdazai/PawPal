@@ -9,9 +9,10 @@ import {
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { colors, radii, shadows } from '../theme/colors';
+import { gradients } from '../theme/gradients';
 import { fonts, typography } from '../theme/typography';
 import { useResponsive } from '../theme/responsive';
 import { Icon } from '../components/Icon';
@@ -19,6 +20,7 @@ import { Badge } from '../components/Badge';
 import { PrimaryButton } from '../components/Button';
 import { FormField } from '../components/FormField';
 import { ActionSheet } from '../components/ActionSheet';
+import { PawsomeGradientScreen } from '../components/PawsomeGradientScreen';
 import { Toast, useToast } from '../components/Toast';
 import { MascotDockSlot } from '../mascot/MascotDockSlot';
 import { useMascotActions } from '../mascot/MascotProvider';
@@ -35,7 +37,7 @@ import {
   towerName,
   type SocietyKey,
 } from '../booking/societies';
-import { BATCHES, INSURANCE_COVER, formatMoney } from '../booking/walkPlans';
+import { BATCHES } from '../booking/walkPlans';
 import { currentPosition, warmUpLocation } from '../booking/geocoding';
 import { loadPetCareStyle } from '../maps/petCareStyle';
 
@@ -145,7 +147,7 @@ export function SocietyProfileScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <PawsomeGradientScreen variant="CROWN">
       <View style={[styles.topBar, r.compact && styles.topBarCompact]}>
         <Pressable
           onPress={() => go('closeBooking')}
@@ -358,10 +360,10 @@ export function SocietyProfileScreen() {
             <Icon name="shield" size={22} color={colors.coralInk} />
           </View>
           <View style={styles.flex}>
-            <Text style={styles.moatTitle}>Zero-Ghosting Backup + {formatMoney(INSURANCE_COVER)} Vet Cover</Text>
+            <Text style={styles.moatTitle}>Zero-Ghosting Backup + Walk Vet Cover</Text>
             <Text style={styles.meta}>
               If your regular walker is ever absent, a pre-briefed backup walker from your society steps in
-              automatically. Zero disruption, full insurance.
+              automatically. Vet & accident cover starts when the walker checks in at your door.
             </Text>
           </View>
         </View>
@@ -402,7 +404,7 @@ export function SocietyProfileScreen() {
           onClose={() => setPicking(false)}
         />
       ) : null}
-    </SafeAreaView>
+    </PawsomeGradientScreen>
   );
 }
 
@@ -416,10 +418,6 @@ function Stat({ value, label }: { value: string; label: string }) {
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.canvas,
-  },
   flex: {
     flex: 1,
   },
@@ -481,25 +479,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 16,
   },
+  // Sits straight on the CROWN glow: no panel of its own.
   hero: {
     alignItems: 'center',
     gap: 8,
-    paddingTop: 16,
-    paddingBottom: 22,
+    paddingTop: 8,
+    paddingBottom: 10,
     paddingHorizontal: 18,
-    borderRadius: radii.xl,
-    backgroundColor: colors.stage,
   },
   heroShort: {
-    paddingTop: 12,
-    paddingBottom: 16,
+    paddingTop: 4,
+    paddingBottom: 6,
   },
   heroPill: {
     paddingHorizontal: 12,
     paddingVertical: 5,
     borderRadius: radii.full,
-    backgroundColor: colors.card,
-    ...shadows.soft,
+    backgroundColor: 'rgba(255, 255, 255, 0.78)',
   },
   heroPillText: {
     fontFamily: fonts.extrabold,
@@ -669,6 +665,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: radii.lg,
     backgroundColor: colors.stage,
+    backgroundImage: gradients.insuranceBanner,
   },
   moatIcon: {
     width: 42,
