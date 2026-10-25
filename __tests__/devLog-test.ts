@@ -75,7 +75,7 @@ describe('logApiCall', () => {
     });
     expect(lines[0]).toContain('api    ✔ 200 POST /auth/phone · 84 ms  { body: { token: [hidden], method: "sms" } }');
     expect(lines[1]).toContain('✖ 400 POST /bookings/3f2a1c2b…/start · 12 ms · wrong_otp: Wrong OTP. 4 tries left.');
-    expect(lines[2]).toContain('✖ network GET /me · 3 ms · can\'t reach http://localhost:4000 (on a USB phone or emulator');
+    expect(lines[2]).toContain("✖ network GET /me · 3 ms · can't reach http://localhost:4000. On a USB phone or emulator");
   });
 
   test('repeated successful reads collapse into one summary line', () => {
@@ -91,7 +91,17 @@ describe('logApiCall', () => {
 describe('unreachableHint', () => {
   test('names the likely fix for each kind of address', () => {
     expect(unreachableHint('http://localhost:4000')).toContain('adb reverse tcp:4000 tcp:4000');
-    expect(unreachableHint('http://192.168.0.104:4000')).toContain('firewall');
-    expect(unreachableHint('https://api.pawpal.in')).toBe(' (is the API running?)');
+    expect(unreachableHint('http://localhost:4300')).toContain('port 4300 must be forwarded: adb reverse tcp:4300 tcp:4300');
+    expect(unreachableHint('http://192.168.0.104:4000')).toContain('firewall on port 4000?');
+    expect(unreachableHint('https://api.pawpal.in')).toBe(' Is the API running?');
+  });
+
+  test('on web, localhost needs no forwarding', () => {
+    jest.isolateModules(() => {
+      jest.doMock('react-native', () => ({ Platform: { OS: 'web' } }));
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- a fresh copy that sees the mocked Platform
+      const web = require('../src/monitoring/devLog') as typeof import('../src/monitoring/devLog');
+      expect(web.unreachableHint('http://localhost:4000')).toBe(' Is the API running?');
+    });
   });
 });

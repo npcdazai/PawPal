@@ -137,7 +137,10 @@
       "WebFetch(domain:support.google.com)",
       "Read(//c/Users/Admin.DESKTOP-I7I22HT/.claude/**)",
       "PowerShell(node --input-type=module -e \"import { z } from 'zod'; const lat = z.number\\(\\).min\\(-90\\).max\\(90\\); const lng = z.number\\(\\).min\\(-180\\).max\\(180\\); const point = z.object\\({ lat: z.coerce.number\\(\\).pipe\\(lat\\), lng: z.coerce.number\\(\\).pipe\\(lng\\) }\\); const pair = z.string\\(\\).transform\\(v => v.split\\(','\\).map\\(Number\\)\\).pipe\\(z.tuple\\([lat, lng]\\)\\); console.log\\(JSON.stringify\\(point.safeParse\\({lat:'',lng:''}\\)\\)\\); console.log\\(JSON.stringify\\(point.safeParse\\({lat:' ',lng:'19'}\\)\\)\\); console.log\\(JSON.stringify\\(pair.safeParse\\(','\\)\\)\\); console.log\\(JSON.stringify\\(pair.safeParse\\('19.1,'\\)\\)\\); console.log\\(JSON.stringify\\(pair.safeParse\\('abc'\\)\\)\\);\")",
-      "PowerShell(Get-NetTCPConnection -State Listen -LocalPort 4200 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -Confirm:$false }; Set-Location C:\\\\Pratham\\\\Pratham\\\\Developer\\\\PawPalBackend; npx tsc --noEmit 2>&1 | Select-Object -First 20; \"TSC: $LASTEXITCODE\"; npm test 2>&1 | Select-String -Pattern '^ℹ \\(tests|pass|fail\\)|✖|AssertionError' | Select-Object -First 20)"
+      "PowerShell(Get-NetTCPConnection -State Listen -LocalPort 4200 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -Confirm:$false }; Set-Location C:\\\\Pratham\\\\Pratham\\\\Developer\\\\PawPalBackend; npx tsc --noEmit 2>&1 | Select-Object -First 20; \"TSC: $LASTEXITCODE\"; npm test 2>&1 | Select-String -Pattern '^ℹ \\(tests|pass|fail\\)|✖|AssertionError' | Select-Object -First 20)",
+      "mcp__claude_ai_Claude_Docs__guide",
+      "mcp__claude_ai_Claude_Docs__batch",
+      "mcp__claude_ai_Claude_Docs__update"
     ]
   },
   "enabledPlugins": {

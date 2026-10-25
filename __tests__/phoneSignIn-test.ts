@@ -145,7 +145,7 @@ describe('phone sign-in in a development build without Firebase', () => {
     fetchMock.mockRejectedValueOnce(new TypeError('Network request failed'));
     const error = (await requestCode('9876543210').catch((caught: unknown) => caught)) as Error;
     expect(error).toMatchObject({ status: 0, code: 'network' });
-    expect(error.message).toMatch(/^Couldn’t reach the PawPal API at http:\/\/\S+\. \(/);
+    expect(error.message).toMatch(/^Couldn’t reach the PawPal API at http:\/\/\S+\. (On a USB phone|Is the API running)/);
     expect(printed()).toMatch(/auth {3}⚠ Code request failed {2}\{ reason: "network", status: 0, message: "Couldn’t reach/);
     // Still on the phone step: there's no code to confirm.
     await expect(confirmCode('123456')).rejects.toMatchObject({ code: 'no_code' });

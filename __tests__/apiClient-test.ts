@@ -160,7 +160,7 @@ describe('development console lines', () => {
     expect(apiLines()).toEqual([
       expect.stringContaining(`✖ network GET /bookings · `),
     ]);
-    expect(apiLines()[0]).toContain(`can't reach ${base}${unreachableHint(base)}`);
+    expect(apiLines()[0]).toContain(`can't reach ${base}.${unreachableHint(base)}`);
   });
 
   test('a push token in the path never reaches the console', async () => {

@@ -10,6 +10,7 @@
  * the server. Everything goes through console.log, so an expected failure doesn't
  * raise a LogBox warning in the app.
  */
+import { Platform } from 'react-native';
 
 export type LogFields = Record<string, unknown>;
 
@@ -142,7 +143,7 @@ export function logApiCall({ method, path, status, ms, body, problem, baseUrl }:
   const took = `${Math.round(ms)} ms`;
   if (status === 0) {
     flushRepeats();
-    const where = problem?.code === 'network' && baseUrl ? ` · can't reach ${baseUrl}${unreachableHint(baseUrl)}` : '';
+    const where = problem?.code === 'network' && baseUrl ? ` · can't reach ${baseUrl}.${unreachableHint(baseUrl)}` : '';
     print('api', `✖ ${problem?.code ?? 'network'} ${method} ${shortPath} · ${took}${where}`);
     return;
   }
@@ -167,13 +168,18 @@ export function logApiCall({ method, path, status, ms, body, problem, baseUrl }:
   print('api', `✔ ${status} ${method} ${shortPath} · ${took}`, body === undefined ? undefined : { body });
 }
 
-/** What usually stops a development build reaching the API on this computer. */
+/**
+ * What usually stops a development build reaching the API on this computer, as
+ * a sentence to follow "…at <address>.". Uses the address's own port; on web,
+ * localhost needs no forwarding.
+ */
 export function unreachableHint(baseUrl: string): string {
-  if (/\/\/(localhost|127\.0\.0\.1)[:/]/.test(baseUrl)) {
-    return ' (on a USB phone or emulator, port 4000 must be forwarded: adb reverse tcp:4000 tcp:4000 — the API does this itself under npm run dev)';
+  const port = /^[a-z][a-z\d+.-]*:\/\/[^/:?#]+:(\d+)/i.exec(baseUrl)?.[1] ?? (baseUrl.startsWith('https:') ? '443' : '80');
+  if (/\/\/(localhost|127\.0\.0\.1)[:/]?/.test(baseUrl) && Platform.OS !== 'web') {
+    return ` On a USB phone or emulator, port ${port} must be forwarded: adb reverse tcp:${port} tcp:${port} (the API does this itself under npm run dev).`;
   }
   if (/\/\/(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(baseUrl)) {
-    return ' (is the API running, on the same Wi-Fi, and allowed through the computer’s firewall on port 4000?)';
+    return ` Is the API running, on the same Wi-Fi, and allowed through the computer’s firewall on port ${port}?`;
   }
-  return ' (is the API running?)';
+  return ' Is the API running?';
 }
